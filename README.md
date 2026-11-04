@@ -1,5 +1,7 @@
 # SharePoint Diff
 
+**ENGLISH BELOW**
+
 **Tác giả / Authors:** Vũ Mạnh Quân (taladinhcao@gmail.com) & Trong-Nghia Be (benghia1st@gmail.com)
 
 **Giấy phép / License:** [MIT](LICENSE)
