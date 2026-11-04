@@ -14,7 +14,9 @@ try {
     }
     dotnet publish src/SharePointDiff.App -c Release -r win-x64 --self-contained false --no-restore -o publish/win-x64
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
-    Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $root 'publish/win-x64/README.md') -Force
+    foreach ($document in @('README.md', 'LICENSE')) {
+        Copy-Item -LiteralPath (Join-Path $root $document) -Destination (Join-Path $root "publish/win-x64/$document") -Force
+    }
     foreach ($folder in @('docs', 'samples')) {
         Copy-Item -LiteralPath (Join-Path $root $folder) -Destination (Join-Path $root 'publish/win-x64') -Recurse -Force
     }

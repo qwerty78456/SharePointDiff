@@ -5,6 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <Deterministic>true</Deterministic>
+    <Authors>Vũ Mạnh Quân (taladinhcao@gmail.com) &amp; Trong-Nghia Be (benghia1st@gmail.com)</Authors>
+    <Copyright>Copyright (c) 2026 Vũ Mạnh Quân (taladinhcao@gmail.com) &amp; Trong-Nghia Be (benghia1st@gmail.com)</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <DebugType>embedded</DebugType>
   </PropertyGroup>

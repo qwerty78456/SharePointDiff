@@ -1,5 +1,9 @@
 # SharePoint Diff
 
+**Tác giả / Authors:** Vũ Mạnh Quân (taladinhcao@gmail.com) & Trong-Nghia Be (benghia1st@gmail.com)
+
+**Giấy phép / License:** [MIT](LICENSE)
+
 Ứng dụng Windows **C# / WPF / .NET 10**, giao diện **Tiếng Việt và English**, để đối chiếu thư mục local với SharePoint Online bằng hash, tải tệp thiếu và thay các bản khác biệt theo lựa chọn của người dùng.
 
 **Chỉ đọc SharePoint. Không upload, sửa metadata trên site, xoá hoặc di chuyển tệp chỉ có ở local. Mọi lần ghi đè local đều có bản sao lưu đã kiểm tra SHA-256.**

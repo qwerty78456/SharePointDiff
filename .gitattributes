@@ -2,6 +2,7 @@
 .gitattributes text eol=crlf
 .editorconfig text eol=crlf
 .gitignore text eol=crlf
+LICENSE text eol=crlf
 *.cs text eol=crlf
 *.xaml text eol=crlf
 *.resx text eol=crlf
