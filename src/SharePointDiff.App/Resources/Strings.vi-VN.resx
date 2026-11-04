@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <data name="Subtitle" xml:space="preserve">
+    <value>Đối chiếu bằng hash. Tải đúng phần thiếu. Bản gốc luôn được bảo toàn.</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>Ngôn ngữ</value>
+  </data>
+  <data name="Connection" xml:space="preserve">
+    <value>Kết nối &amp; thư mục</value>
+  </data>
+  <data name="SiteUrl" xml:space="preserve">
+    <value>Link site SharePoint</value>
+  </data>
+  <data name="LocalFolder" xml:space="preserve">
+    <value>Thư mục local</value>
+  </data>
+  <data name="Browse" xml:space="preserve">
+    <value>Chọn thư mục</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>Kết nối</value>
+  </data>
+  <data name="Compare" xml:space="preserve">
+    <value>So sánh</value>
+  </data>
+  <data name="Profile" xml:space="preserve">
+    <value>Hồ sơ đăng nhập</value>
+  </data>
+  <data name="New" xml:space="preserve">
+    <value>Thêm</value>
+  </data>
+  <data name="EditProfile" xml:space="preserve">
+    <value>Chỉnh hồ sơ đăng nhập</value>
+  </data>
+  <data name="ProfileName" xml:space="preserve">
+    <value>Tên hồ sơ</value>
+  </data>
+  <data name="TenantDomain" xml:space="preserve">
+    <value>Tenant ID / tên miền</value>
+  </data>
+  <data name="SaveProfile" xml:space="preserve">
+    <value>Lưu hồ sơ</value>
+  </data>
+  <data name="ReadOnlyNotice" xml:space="preserve">
+    <value>Chỉ đọc SharePoint • Đăng nhập qua Microsoft • Không lưu mật khẩu</value>
+  </data>
+  <data name="Libraries" xml:space="preserve">
+    <value>Thư viện</value>
+  </data>
+  <data name="FilterHint" xml:space="preserve">
+    <value>Lọc theo tên tệp hoặc đường dẫn</value>
+  </data>
+  <data name="AllFiles" xml:space="preserve">
+    <value>Tất cả tệp</value>
+  </data>
+  <data name="Differences" xml:space="preserve">
+    <value>Khác dung lượng/hash</value>
+  </data>
+  <data name="NeedsAttention" xml:space="preserve">
+    <value>Chưa xác minh / lỗi</value>
+  </data>
+  <data name="SelectVisible" xml:space="preserve">
+    <value>Chọn đang hiển thị</value>
+  </data>
+  <data name="ClearVisible" xml:space="preserve">
+    <value>Bỏ chọn hiển thị</value>
+  </data>
+  <data name="ColumnStatus" xml:space="preserve">
+    <value>Trạng thái</value>
+  </data>
+  <data name="ColumnPath" xml:space="preserve">
+    <value>Đường dẫn</value>
+  </data>
+  <data name="ColumnLocal" xml:space="preserve">
+    <value>Local</value>
+  </data>
+  <data name="ColumnReuse" xml:space="preserve">
+    <value>Tái dùng</value>
+  </data>
+  <data name="Details" xml:space="preserve">
+    <value>Chi tiết &amp; metadata</value>
+  </data>
+  <data name="DetailsHint" xml:space="preserve">
+    <value>Chọn một tệp để xem hash và metadata SharePoint.</value>
+  </data>
+  <data name="Overwrite" xml:space="preserve">
+    <value>Xử lý tệp khác biệt</value>
+  </data>
+  <data name="KeepLocal" xml:space="preserve">
+    <value>Không ghi đè</value>
+  </data>
+  <data name="SelectFiles" xml:space="preserve">
+    <value>Chọn từng tệp</value>
+  </data>
+  <data name="ReplaceAll" xml:space="preserve">
+    <value>Ghi đè tất cả tệp khác biệt</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>Thực hiện</value>
+  </data>
+  <data name="Stop" xml:space="preserve">
+    <value>Dừng</value>
+  </data>
+  <data name="Reports" xml:space="preserve">
+    <value>Báo cáo</value>
+  </data>
+  <data name="BackupNotice" xml:space="preserve">
+    <value>Tệp ghi đè được sao lưu trước. Tệp chỉ có ở local luôn được để nguyên.</value>
+  </data>
+  <data name="Summary" xml:space="preserve">
+    <value>{0:N0} tệp  •  Khớp: {1:N0}  •  Thiếu: {2:N0}  •  Khác: {3:N0}  •  Chỉ local: {4:N0}  •  Cần xem: {5:N0}</value>
+  </data>
+  <data name="Estimate" xml:space="preserve">
+    <value>Tải mới: {0:N0}  •  Ghi đè: {1:N0}  •  Tái dùng: {2:N0}
+Mạng dự kiến: {3}  •  Sao lưu: {4}</value>
+  </data>
+  <data name="ChooseFolder" xml:space="preserve">
+    <value>Chọn thư mục để đối chiếu với SharePoint</value>
+  </data>
+  <data name="StatusMatch" xml:space="preserve">
+    <value>Khớp hash</value>
+  </data>
+  <data name="StatusMissingLocal" xml:space="preserve">
+    <value>Thiếu ở máy</value>
+  </data>
+  <data name="StatusDifferentSize" xml:space="preserve">
+    <value>Khác dung lượng</value>
+  </data>
+  <data name="StatusDifferentHash" xml:space="preserve">
+    <value>Khác hash</value>
+  </data>
+  <data name="StatusLocalOnly" xml:space="preserve">
+    <value>Chỉ có ở local</value>
+  </data>
+  <data name="StatusUnverified" xml:space="preserve">
+    <value>Chưa xác minh hash</value>
+  </data>
+  <data name="StatusError" xml:space="preserve">
+    <value>Lỗi / xung đột</value>
+  </data>
+  <data name="ReuseYes" xml:space="preserve">
+    <value>Có sẵn</value>
+  </data>
+  <data name="LocalHash" xml:space="preserve">
+    <value>QuickXorHash local</value>
+  </data>
+  <data name="RemoteHash" xml:space="preserve">
+    <value>QuickXorHash SharePoint</value>
+  </data>
+  <data name="Sha256" xml:space="preserve">
+    <value>SHA-256 local</value>
+  </data>
+  <data name="ReuseSource" xml:space="preserve">
+    <value>Bản có thể dùng lại</value>
+  </data>
+  <data name="Metadata" xml:space="preserve">
+    <value>Metadata SharePoint (nguyên bản)</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>Sẵn sàng</value>
+  </data>
+  <data name="Connecting" xml:space="preserve">
+    <value>Đang kết nối Microsoft…</value>
+  </data>
+  <data name="Connected" xml:space="preserve">
+    <value>Đã kết nối • {0} thư viện</value>
+  </data>
+  <data name="ReadLibrary" xml:space="preserve">
+    <value>Đang đọc thư viện {0}/{1}…</value>
+  </data>
+  <data name="Hashing" xml:space="preserve">
+    <value>Đang tính hash {0:N0}/{1:N0}…</value>
+  </data>
+  <data name="Downloading" xml:space="preserve">
+    <value>Đang tải tệp…</value>
+  </data>
+  <data name="Applying" xml:space="preserve">
+    <value>Đang cập nhật {0}/{1}…</value>
+  </data>
+  <data name="ScanComplete" xml:space="preserve">
+    <value>Đã đối chiếu {0:N0} tệp</value>
+  </data>
+  <data name="ApplyComplete" xml:space="preserve">
+    <value>Đã cập nhật {0}/{1} tệp</value>
+  </data>
+  <data name="Cancelled" xml:space="preserve">
+    <value>Đã dừng • Các bản đã hoàn tất được giữ lại</value>
+  </data>
+  <data name="Failed" xml:space="preserve">
+    <value>Tác vụ gặp lỗi</value>
+  </data>
+  <data name="DemoMode" xml:space="preserve">
+    <value>CHẾ ĐỘ DEMO • 10.000 tệp giả lập • Không kết nối hoặc ghi tệp</value>
+  </data>
+  <data name="ScanIssues" xml:space="preserve">
+    <value>Có {0} vấn đề khi đọc dữ liệu. Các mục không đọc được không được xem là thiếu.</value>
+  </data>
+  <data name="ReportSummary" xml:space="preserve">
+    <value>Đã cập nhật: {0}
+Lỗi: {1}
+Số byte tải mới: {2}
+Báo cáo và sao lưu: {3}
+Tệp chỉ local: giữ nguyên.</value>
+  </data>
+  <data name="ErrorInvalidSite" xml:space="preserve">
+    <value>Link không hợp lệ. Nhập URL site HTTPS trên SharePoint Online, không phải link chia sẻ tệp.</value>
+  </data>
+  <data name="ErrorInvalidProfile" xml:space="preserve">
+    <value>Chọn hoặc lưu hồ sơ có Tenant ID và Entra Client ID hợp lệ trước khi kết nối.</value>
+  </data>
+  <data name="ErrorInvalidRoot" xml:space="preserve">
+    <value>Thư mục local chưa tồn tại hoặc không hợp lệ. Chọn một thư mục thông thường.</value>
+  </data>
+  <data name="ErrorAuthenticationFailed" xml:space="preserve">
+    <value>Đăng nhập Microsoft chưa thành công. Kiểm tra tài khoản, cấu hình ứng dụng và chính sách tenant.</value>
+  </data>
+  <data name="ErrorAccessDenied" xml:space="preserve">
+    <value>Không đủ quyền đọc SharePoint hoặc metadata. Kiểm tra quyền đã cấp cho ứng dụng.</value>
+  </data>
+  <data name="ErrorRemoteMissing" xml:space="preserve">
+    <value>Tệp SharePoint không còn tồn tại.</value>
+  </data>
+  <data name="ErrorHttpError" xml:space="preserve">
+    <value>Yêu cầu Microsoft không thành công. Thử lại sau.</value>
+  </data>
+  <data name="ErrorInvalidPath" xml:space="preserve">
+    <value>Tên hoặc đường dẫn không hợp lệ trên Windows; tệp được bỏ qua.</value>
+  </data>
+  <data name="ErrorOutsideRoot" xml:space="preserve">
+    <value>Đường dẫn nằm ngoài thư mục được chọn; đã chặn thao tác.</value>
+  </data>
+  <data name="ErrorLinkBlocked" xml:space="preserve">
+    <value>Không theo liên kết symbolic hoặc junction để tránh xử lý ngoài thư mục đã chọn.</value>
+  </data>
+  <data name="ErrorPathCollision" xml:space="preserve">
+    <value>Xung đột tên tệp/thư mục hoặc tên Unicode. Không tự đổi tên hoặc ghi đè.</value>
+  </data>
+  <data name="ErrorIncompleteInventory" xml:space="preserve">
+    <value>Danh sách SharePoint chưa đầy đủ; chưa thể cập nhật mục liên quan.</value>
+  </data>
+  <data name="ErrorCountChanged" xml:space="preserve">
+    <value>Số lượng mục thay đổi trong lúc quét. Kiểm tra lại thư viện trước khi cập nhật.</value>
+  </data>
+  <data name="ErrorUnsupportedItem" xml:space="preserve">
+    <value>Loại mục SharePoint này chưa được hỗ trợ.</value>
+  </data>
+  <data name="ErrorReadLibraryFailed" xml:space="preserve">
+    <value>Không đọc được thư viện; không xem thư viện này là rỗng.</value>
+  </data>
+  <data name="ErrorLocalReadFailed" xml:space="preserve">
+    <value>Không đọc được tệp hoặc thư mục local.</value>
+  </data>
+  <data name="ErrorFileChanged" xml:space="preserve">
+    <value>Bản local đã thay đổi hoặc xuất hiện sau khi quét. Quét lại trước khi thay.</value>
+  </data>
+  <data name="ErrorMetadataIncomplete" xml:space="preserve">
+    <value>Metadata chưa đầy đủ; tệp chưa được cập nhật.</value>
+  </data>
+  <data name="ErrorUnscannedLibrary" xml:space="preserve">
+    <value>Thư viện chưa quét thành công. Không kết luận các tệp là chỉ local.</value>
+  </data>
+  <data name="ErrorRemoteChanged" xml:space="preserve">
+    <value>Bản SharePoint đã thay đổi trong lúc xử lý. Quét lại trước khi cập nhật.</value>
+  </data>
+  <data name="ErrorInvalidDownload" xml:space="preserve">
+    <value>Phản hồi tải không hợp lệ; bản local được giữ nguyên.</value>
+  </data>
+  <data name="ErrorHashMismatch" xml:space="preserve">
+    <value>Hash hoặc dung lượng không khớp; không dùng bản tải này.</value>
+  </data>
+  <data name="ErrorNotEligible" xml:space="preserve">
+    <value>Mục này không thuộc phạm vi được phép cập nhật.</value>
+  </data>
+  <data name="ErrorDiskFull" xml:space="preserve">
+    <value>Không đủ dung lượng để tải, sao lưu và cài đặt an toàn.</value>
+  </data>
+  <data name="ErrorBackupFailed" xml:space="preserve">
+    <value>Sao lưu chưa được xác minh; bản local chưa bị thay.</value>
+  </data>
+  <data name="ErrorFileIoError" xml:space="preserve">
+    <value>Không thể thao tác tệp. Kiểm tra dung lượng, quyền ghi hoặc tệp đang mở.</value>
+  </data>
+  <data name="ErrorTransferFailed" xml:space="preserve">
+    <value>Chưa cập nhật được tệp. Giữ lại cache để thử lại.</value>
+  </data>
+  <data name="ErrorUnexpected" xml:space="preserve">
+    <value>Có lỗi ngoài dự kiến. Dừng tác vụ và kiểm tra báo cáo trước khi thử lại.</value>
+  </data>
+  <data name="ErrorSettingsWrite" xml:space="preserve">
+    <value>Không lưu được thiết lập. Kiểm tra quyền ghi thư mục dữ liệu người dùng.</value>
+  </data>
+  <data name="ErrorTitle" xml:space="preserve">
+    <value>Chi tiết lỗi</value>
+  </data>
+  <data name="OperationLabel" xml:space="preserve">
+    <value>Thao tác</value>
+  </data>
+  <data name="CopyError" xml:space="preserve">
+    <value>Sao chép lỗi</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Đóng</value>
+  </data>
+  <data name="StartingApplication" xml:space="preserve">
+    <value>Khởi động ứng dụng</value>
+  </data>
+  <data name="TechnicalDetails" xml:space="preserve">
+    <value>Chi tiết kỹ thuật &amp; nguyên nhân</value>
+  </data>
+  <data name="ErrorSettingsRead" xml:space="preserve"><value>Không đọc được cấu hình. Xem lỗi chi tiết trước khi sửa hoặc thử lại.</value></data>
+  <data name="LogWriteFailed" xml:space="preserve"><value>Không ghi được tệp log</value></data>
+  <data name="StatTotal" xml:space="preserve"><value>Tổng tệp</value></data>
+  <data name="StatMatch" xml:space="preserve"><value>Khớp hash</value></data>
+  <data name="StatMissing" xml:space="preserve"><value>Thiếu ở máy</value></data>
+  <data name="StatDifferent" xml:space="preserve"><value>Khác biệt</value></data>
+  <data name="StatLocal" xml:space="preserve"><value>Chỉ local</value></data>
+  <data name="StatReview" xml:space="preserve"><value>Cần kiểm tra</value></data>
+  <data name="HashDetails" xml:space="preserve"><value>Hash &amp; bản ghi gốc</value></data>
+</root>

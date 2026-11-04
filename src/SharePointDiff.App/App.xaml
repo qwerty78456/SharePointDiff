@@ -1,0 +1,36 @@
+<Application x:Class="SharePointDiff.App.App"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" ThemeMode="Light">
+  <Application.Resources>
+    <ResourceDictionary>
+      <SolidColorBrush x:Key="Ink" Color="#172C43" />
+      <SolidColorBrush x:Key="Muted" Color="#52657B" />
+      <SolidColorBrush x:Key="Accent" Color="#126A70" />
+      <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink}" /></Style>
+      <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Padding" Value="16,9" /><Setter Property="MinHeight" Value="40" />
+        <Setter Property="Margin" Value="0,0,8,0" /><Setter Property="Cursor" Value="Hand" />
+      </Style>
+      <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{StaticResource Accent}" /><Setter Property="Foreground" Value="White" />
+        <Setter Property="BorderBrush" Value="{StaticResource Accent}" /><Setter Property="FontWeight" Value="SemiBold" />
+      </Style>
+      <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"><Setter Property="Padding" Value="10,8" /><Setter Property="MinHeight" Value="40" /></Style>
+      <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}"><Setter Property="MinHeight" Value="40" /><Setter Property="Padding" Value="10,7" /></Style>
+      <Style TargetType="Expander">
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Expander">
+          <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+            <ToggleButton IsChecked="{Binding IsExpanded,RelativeSource={RelativeSource TemplatedParent},Mode=TwoWay}"
+              HorizontalContentAlignment="Left" BorderThickness="0" Background="Transparent" Padding="0,3" MinHeight="26">
+              <StackPanel Orientation="Horizontal"><TextBlock Text="⌄" Margin="0,0,8,0" /><ContentPresenter ContentSource="Header" /></StackPanel>
+            </ToggleButton>
+            <ContentPresenter x:Name="Body" Grid.Row="1" ContentSource="Content" Visibility="Collapsed" />
+          </Grid>
+          <ControlTemplate.Triggers><Trigger Property="IsExpanded" Value="True"><Setter TargetName="Body" Property="Visibility" Value="Visible" /></Trigger></ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+      </Style>
+      <Style x:Key="Caption" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Muted}" /><Setter Property="Margin" Value="0,0,0,5" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+      <Style x:Key="Card" TargetType="Border"><Setter Property="Background" Value="White" /><Setter Property="BorderBrush" Value="#DFE7EF" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="10" /><Setter Property="Padding" Value="16" /></Style>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

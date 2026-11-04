@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>SharePointDiff</AssemblyName>
+    <RootNamespace>SharePointDiff.App</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\SharePointDiff.Core\SharePointDiff.Core.csproj" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Update="Resources\Strings.resx"><Generator></Generator></EmbeddedResource></ItemGroup>
+</Project>
