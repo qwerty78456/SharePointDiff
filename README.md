@@ -4,6 +4,8 @@
 
 **Giấy phép / License:** [MIT](LICENSE)
 
+Thư viện đi kèm / Bundled dependencies: [Third-party notices](THIRD-PARTY-NOTICES.md).
+
 Ứng dụng Windows **C# / WPF / .NET 10**, giao diện **Tiếng Việt và English**, để đối chiếu thư mục local với SharePoint Online bằng hash, tải tệp thiếu và thay các bản khác biệt theo lựa chọn của người dùng.
 
 **Chỉ đọc SharePoint. Không upload, sửa metadata trên site, xoá hoặc di chuyển tệp chỉ có ở local. Mọi lần ghi đè local đều có bản sao lưu đã kiểm tra SHA-256.**
@@ -19,7 +21,9 @@
 
 Yêu cầu Windows x64 và **.NET 10 Windows Desktop Runtime**. Visual Studio không cần thiết khi chạy bản phát hành. Máy đã có .NET 10 Desktop Runtime thì không phải cài thêm Python, PowerShell, PnP.PowerShell hoặc trình biên dịch.
 
-Mở `publish\win-x64\SharePointDiff.exe`. Có thể tạo shortcut tới tệp này theo cách thông thường của Windows.
+Tải ZIP Windows x64 từ [GitHub Releases](https://github.com/qwerty78456/SharePointDiff/releases), giải nén toàn bộ rồi mở `SharePointDiff.exe` trong thư mục vừa giải nén. Nếu build từ mã nguồn, tệp nằm ở `publish\win-x64\SharePointDiff.exe`. Có thể tạo shortcut tới tệp này theo cách thông thường của Windows.
+
+Tệp `SHA256SUMS.txt` cạnh bản tải ghi SHA-256 của ZIP. Có thể đối chiếu bằng `Get-FileHash -Algorithm SHA256 <đường-dẫn-ZIP>`; thao tác kiểm tra này là tuỳ chọn và không cần thiết để chạy ứng dụng.
 
 Ứng dụng mặc định tiếng Việt. Bộ chọn **Tiếng Việt / English** ở góc trên phải đổi ngôn ngữ ngay, không mất lựa chọn tệp hoặc dừng tác vụ. Tên tệp, hash, tên cột và giá trị gốc SharePoint không bị dịch.
 
@@ -151,7 +155,9 @@ Phạm vi v1: SharePoint Online thương mại và bản tệp hiện hành. Kh�
 
 ### Requirements and launch
 
-Windows x64 with **.NET 10 Windows Desktop Runtime**. Open `publish\win-x64\SharePointDiff.exe`; no Python, PowerShell, PnP module or Visual Studio is required at runtime. The language selector switches between Vietnamese and English immediately and remembers the choice.
+Windows x64 with **.NET 10 Windows Desktop Runtime**. Download the Windows x64 ZIP from [GitHub Releases](https://github.com/qwerty78456/SharePointDiff/releases), extract all files and open `SharePointDiff.exe`. Source builds place it in `publish\win-x64`. No Python, PowerShell, PnP module or Visual Studio is required at runtime. The language selector switches between Vietnamese and English immediately and remembers the choice.
+
+`SHA256SUMS.txt` contains the ZIP checksum. Optionally verify it with `Get-FileHash -Algorithm SHA256 <ZIP-path>`; this is not required to run the app.
 
 ### Connect
 
@@ -211,6 +217,8 @@ dotnet publish src\SharePointDiff.App -c Release -r win-x64 --self-contained fal
 Các gói NuGet được ghim phiên bản. Bản publish gom ứng dụng thành một `.exe` và dùng .NET 10 Desktop Runtime đã cài. Không bật trimming cho WPF.
 
 Có thể chạy `scripts\Publish.ps1` bằng PowerShell 7 để restore theo lockfile, build, kiểm thử và publish trong một lượt. Xem [báo cáo kiểm chứng / verification report](docs/Verification.md) để biết kết quả và phạm vi đã thử.
+
+Chạy `scripts\Package.ps1` bằng PowerShell 7 để build, chạy kiểm thử và tạo ZIP cùng SHA-256 trong `dist\v<version>`. Script chỉ đóng gói danh sách tệp phát hành xác định sẵn, kiểm tra số mục và hash executable trong ZIP; không tự đăng lên GitHub. `dist` không được đưa vào Git.
 
 Kiểm thử lõi dùng tệp giả lập và HTTP giả lập: hash độc lập, Unicode, chọn từng tệp/tất cả, không tải khi quét, giữ local-only, backup, nguồn/local thay đổi, tải sai, metadata, huỷ/thử lại, HTTP Range và throttling. Không ghi lên SharePoint hoặc hồ sơ dự án thật.
 

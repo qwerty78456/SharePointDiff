@@ -2,6 +2,8 @@
 **/obj/
 .vs/
 publish/
+dist/
+tmp/
 TestResults/
 *.user
 settings.json
