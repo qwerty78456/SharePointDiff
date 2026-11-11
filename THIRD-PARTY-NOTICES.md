@@ -5,6 +5,7 @@ SharePoint Diff is distributed under the MIT license in `LICENSE`. The following
 ## Microsoft libraries
 
 - Microsoft.Identity.Client 4.92.0 — https://github.com/AzureAD/microsoft-authentication-library-for-dotnet
+- Microsoft.Identity.Client.Extensions.Msal 4.92.0 — https://github.com/AzureAD/microsoft-authentication-library-for-dotnet
 - Microsoft.IdentityModel.Abstractions 8.14.0 — https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet
 
 MIT License
@@ -57,4 +58,4 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-The .NET Windows Desktop Runtime is installed separately and is not bundled in this framework-dependent release. Development/test tooling is not included in the application ZIP.
+The .NET Windows Desktop Runtime is installed separately and is not bundled in this framework-dependent release; it also provides Windows Forms (tray icon), System.Drawing and System.Security.Cryptography.ProtectedData (token cache encryption). Development/test tooling is not included in the application ZIP.

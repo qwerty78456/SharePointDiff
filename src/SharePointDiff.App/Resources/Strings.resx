@@ -112,7 +112,7 @@
     <value>Reports</value>
   </data>
   <data name="BackupNotice" xml:space="preserve">
-    <value>Replaced files are backed up first. Local-only files are always left untouched.</value>
+    <value>Replaced files are backed up first; 3 earlier SharePoint versions are kept per file and backups of local edits are kept permanently. Local-only files are always left untouched.</value>
   </data>
   <data name="Summary" xml:space="preserve">
     <value>{0:N0} files  •  Match: {1:N0}  •  Missing: {2:N0}  •  Different: {3:N0}  •  Local only: {4:N0}  •  Review: {5:N0}</value>
@@ -323,4 +323,81 @@ Local-only files: untouched.</value>
   <data name="StatLocal" xml:space="preserve"><value>Local only</value></data>
   <data name="StatReview" xml:space="preserve"><value>Needs review</value></data>
   <data name="HashDetails" xml:space="preserve"><value>Hashes &amp; raw record</value></data>
+  <data name="ErrorWorkspaceBusy" xml:space="preserve"><value>Another compare or sync is using this mirror. Wait for it to finish, then try again.</value></data>
+  <data name="ErrorStaleInstallTemp" xml:space="preserve"><value>Leftover temporary install file from an interrupted sync. It is not compared or deleted; check it, then remove it yourself.</value></data>
+  <data name="ErrorNoLibrariesSelected" xml:space="preserve"><value>No library is selected for this site. Open the main window, tick the libraries and click Compare.</value></data>
+  <data name="ErrorAgentNotReady" xml:space="preserve"><value>This site and folder have not been compared yet. Click Compare once in the main window.</value></data>
+  <data name="ErrorRequestTimeout" xml:space="preserve"><value>SharePoint did not answer in time. The connection may be slow; try again later.</value></data>
+  <data name="ErrorServiceUnavailable" xml:space="preserve"><value>SharePoint is busy or temporarily unavailable. Try again later.</value></data>
+  <data name="ErrorSignInRequired" xml:space="preserve"><value>Microsoft sign-in is required. Click Sign in; the browser opens only when you ask.</value></data>
+  <data name="ErrorTokenCacheUnavailable" xml:space="preserve"><value>The saved sign-in could not be read or written. Sign in again; if this persists, use Forget sign-in.</value></data>
+  <data name="ErrorAuthNetworkFailed" xml:space="preserve"><value>Could not reach Microsoft sign-in. Check the network and try again.</value></data>
+  <data name="ErrorWriteScopedApp" xml:space="preserve"><value>This app registration is not limited to read-only permissions, so the sign-in is not saved and checking at Windows sign-in is unavailable. Use a read-only app (Sites.Read.All, AllSites.Read).</value></data>
+  <data name="ErrorDownloadStalled" xml:space="preserve"><value>The download stopped receiving data. The part already downloaded is kept and resumes next time.</value></data>
+  <data name="ErrorDownloadInterrupted" xml:space="preserve"><value>The download connection was interrupted. The part already downloaded is kept and resumes next time.</value></data>
+  <data name="ErrorStartupRegistrationFailed" xml:space="preserve"><value>Could not change the Windows startup entry.</value></data>
+  <data name="FilterLocallyChanged" xml:space="preserve"><value>Locally changed</value></data>
+  <data name="ForgetSignIn" xml:space="preserve"><value>Forget sign-in</value></data>
+  <data name="ForgetSignInHint" xml:space="preserve"><value>Remove the encrypted sign-in saved on this computer for this profile.</value></data>
+  <data name="SignInForgotten" xml:space="preserve"><value>The saved sign-in was removed from this computer.</value></data>
+  <data name="TrayOpen" xml:space="preserve"><value>Open SharePoint Diff</value></data>
+  <data name="TrayCheckNow" xml:space="preserve"><value>Check now</value></data>
+  <data name="TraySignIn" xml:space="preserve"><value>Sign in…</value></data>
+  <data name="TrayExit" xml:space="preserve"><value>Exit</value></data>
+  <data name="TrayWaiting" xml:space="preserve"><value>Waiting to check after sign-in</value></data>
+  <data name="TrayCheckingStart" xml:space="preserve"><value>Checking SharePoint…</value></data>
+  <data name="TrayChecking" xml:space="preserve"><value>Comparing files {0:N0}/{1:N0}</value></data>
+  <data name="TrayUpToDate" xml:space="preserve"><value>Up to date ({0:HH:mm})</value></data>
+  <data name="TrayReviewOnly" xml:space="preserve"><value>Up to date; {0:N0} item(s) to review</value></data>
+  <data name="TrayPending" xml:space="preserve"><value>{0:N0} new, {1:N0} updated: click to review</value></data>
+  <data name="TraySyncing" xml:space="preserve"><value>Syncing…</value></data>
+  <data name="TraySyncProgress" xml:space="preserve"><value>Syncing {0:N0}/{1:N0}</value></data>
+  <data name="TrayOffline" xml:space="preserve"><value>Offline; use Check now later</value></data>
+  <data name="TraySignInNeeded" xml:space="preserve"><value>Sign-in required: click the icon</value></data>
+  <data name="TrayProblem" xml:space="preserve"><value>Check failed: click the icon</value></data>
+  <data name="TrayIdle" xml:space="preserve"><value>Stopped</value></data>
+  <data name="BalloonSignInTitle" xml:space="preserve"><value>Microsoft sign-in required</value></data>
+  <data name="BalloonSignInText" xml:space="preserve"><value>SharePoint Diff could not check for changes. Click to sign in; the browser opens only when you click.</value></data>
+  <data name="BalloonDoneTitle" xml:space="preserve"><value>SharePoint Diff sync finished</value></data>
+  <data name="BalloonDone" xml:space="preserve"><value>{0:N0} file(s) installed and verified, {1:N0} error(s). Click to open the report.</value></data>
+  <data name="BalloonCancelled" xml:space="preserve"><value>Sync stopped. Finished files are kept; the rest resumes next time.</value></data>
+  <data name="BalloonStoppedForSignIn" xml:space="preserve"><value>Sync stopped because the sign-in expired. Click to sign in, then sync again.</value></data>
+  <data name="CardTitle" xml:space="preserve"><value>Changes on SharePoint</value></data>
+  <data name="CardSite" xml:space="preserve"><value>Site: {0}</value></data>
+  <data name="CardFolder" xml:space="preserve"><value>Folder: {0}</value></data>
+  <data name="CardScannedAt" xml:space="preserve"><value>Checked at {0:HH:mm}</value></data>
+  <data name="CardNew" xml:space="preserve"><value>New files: {0:N0} ({1})</value></data>
+  <data name="CardUpdates" xml:space="preserve"><value>Updated files: {0:N0} ({1})</value></data>
+  <data name="CardLocallyChanged" xml:space="preserve"><value>{0:N0} of them differ from the last synced copy ({1:N0} changed on both sides, {2:N0} changed only on this computer, {3:N0} never synced before).</value></data>
+  <data name="CardWarning" xml:space="preserve"><value>Sync replaces them too, after a verified backup.</value></data>
+  <data name="CardMoreFiles" xml:space="preserve"><value>…and {0:N0} more</value></data>
+  <data name="CardNoHash" xml:space="preserve"><value>{0:N0} file(s) have no SharePoint hash and are compared by size only.</value></data>
+  <data name="CardReview" xml:space="preserve"><value>{0:N0} item(s) need review in the main window and are not synced.</value></data>
+  <data name="CardNewLibraries" xml:space="preserve"><value>{0:N0} new library(ies) are left out until you compare them in the main window.</value></data>
+  <data name="CardFailedLibraries" xml:space="preserve"><value>{0:N0} library(ies) could not be read; their files are not synced.</value></data>
+  <data name="CardFirstSync" xml:space="preserve"><value>First sync of this folder: there is no earlier synced copy to compare with, so backups of replaced files are kept permanently.</value></data>
+  <data name="CardEstimate" xml:space="preserve"><value>Download about {0}; backups {1}; {2:N0} file(s) reused from local copies.</value></data>
+  <data name="CardNothingWritten" xml:space="preserve"><value>Nothing has been written to the folder yet.</value></data>
+  <data name="CardSync" xml:space="preserve"><value>Sync</value></data>
+  <data name="CardDetails" xml:space="preserve"><value>Details</value></data>
+  <data name="CardLater" xml:space="preserve"><value>Later</value></data>
+  <data name="CardHide" xml:space="preserve"><value>Hide</value></data>
+  <data name="CardStop" xml:space="preserve"><value>Stop</value></data>
+  <data name="CardSignIn" xml:space="preserve"><value>Sign in</value></data>
+  <data name="CardRetry" xml:space="preserve"><value>Retry</value></data>
+  <data name="CardOpen" xml:space="preserve"><value>Open</value></data>
+  <data name="CardClose" xml:space="preserve"><value>Close</value></data>
+  <data name="CardSignInText" xml:space="preserve"><value>Your saved Microsoft sign-in is missing or expired, so SharePoint Diff cannot check for changes. Click Sign in to open the browser.</value></data>
+  <data name="CardProblemTitle" xml:space="preserve"><value>Could not check SharePoint</value></data>
+  <data name="StartWithWindows" xml:space="preserve"><value>Check for changes when I sign in to Windows</value></data>
+  <data name="StartupHint" xml:space="preserve"><value>Takes effect at the next Windows sign-in. A tray icon asks before anything is downloaded.</value></data>
+  <data name="StartupNeedsCompare" xml:space="preserve"><value>Click Compare once for this site and folder to enable this.</value></data>
+  <data name="StartupRedirected" xml:space="preserve"><value>Unavailable while SPDIFF_SETTINGS_PATH points to other settings.</value></data>
+  <data name="StartupDemo" xml:space="preserve"><value>Unavailable in demo mode.</value></data>
+  <data name="StartupPathMismatch" xml:space="preserve"><value>The startup entry points to another copy: {0}</value></data>
+  <data name="StartupMissingTarget" xml:space="preserve"><value>The startup entry points to a program that no longer exists.</value></data>
+  <data name="StartupDisabledInTaskManager" xml:space="preserve"><value>The startup entry is turned off in Task Manager &gt; Startup apps.</value></data>
+  <data name="StartupTemporaryLocation" xml:space="preserve"><value>This copy runs from a build or temporary folder; move it to a fixed folder first.</value></data>
+  <data name="UseThisCopy" xml:space="preserve"><value>Use this copy</value></data>
+  <data name="TraySyncIncomplete" xml:space="preserve"><value>Sync incomplete: use Check now</value></data>
 </root>

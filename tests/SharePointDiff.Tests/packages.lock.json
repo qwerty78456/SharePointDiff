@@ -2,6 +2,12 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
+      "Microsoft.Extensions.TimeProvider.Testing": {
+        "type": "Direct",
+        "requested": "[10.10.0, )",
+        "resolved": "10.10.0",
+        "contentHash": "8duZdxuO3Oo8tlyQXVq1drXee6GJC9DjUU97Pq3YaIqf92jrAHsWxbbRKwvjQI48Mer3IANwUKF0elqvHeY4Rw=="
+      },
       "Microsoft.NET.Test.Sdk": {
         "type": "Direct",
         "requested": "[18.11.0, )",
@@ -42,6 +48,15 @@
           "Microsoft.IdentityModel.Abstractions": "8.14.0"
         }
       },
+      "Microsoft.Identity.Client.Extensions.Msal": {
+        "type": "Transitive",
+        "resolved": "4.92.0",
+        "contentHash": "dQm4p27eitqWdJiIMoqn043Yx19OiFpHqYZGrP3cW5Ew3h3dQSPwD0kLC6xPlzVCQPYuAaNDl6f0xh//uLFVDQ==",
+        "dependencies": {
+          "Microsoft.Identity.Client": "4.92.0",
+          "System.Security.Cryptography.ProtectedData": "4.5.0"
+        }
+      },
       "Microsoft.IdentityModel.Abstractions": {
         "type": "Transitive",
         "resolved": "8.14.0",
@@ -59,6 +74,11 @@
         "dependencies": {
           "Microsoft.TestPlatform.ObjectModel": "18.11.0"
         }
+      },
+      "System.Security.Cryptography.ProtectedData": {
+        "type": "Transitive",
+        "resolved": "4.5.0",
+        "contentHash": "wLBKzFnDCxP12VL9ANydSYhk59fC4cvOr9ypYQLPnAj48NQIhqnjdD2yhP8yEKyBJEjERWS9DisKL7rX5eU25Q=="
       },
       "xunit.abstractions": {
         "type": "Transitive",
@@ -103,7 +123,8 @@
       "sharepointdiff.core": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Identity.Client": "[4.92.0, )"
+          "Microsoft.Identity.Client": "[4.92.0, )",
+          "Microsoft.Identity.Client.Extensions.Msal": "[4.92.0, )"
         }
       }
     }

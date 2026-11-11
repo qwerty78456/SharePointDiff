@@ -38,12 +38,14 @@ public sealed class QuickXorHasher
 
 public static class FileHashing
 {
-    public static async Task<FileHashes> ComputeAsync(string path, CancellationToken ct = default)
+    /// <param name="share">Scans pass ReadWrite|Delete so Office can still save; the size/mtime post-check then reports FileChanged.
+    /// Every verification before a write keeps the default Read share.</param>
+    public static async Task<FileHashes> ComputeAsync(string path, CancellationToken ct = default, FileShare share = FileShare.Read)
     {
         var before = new FileInfo(path);
         long expected = before.Length;
         DateTime stamp = before.LastWriteTimeUtc;
-        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024,
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, share, 1024 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         var qxh = new QuickXorHasher();
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);

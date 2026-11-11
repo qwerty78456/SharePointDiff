@@ -11,7 +11,7 @@ namespace SharePointDiff.App;
 /// <summary>Opt-in rendering/integration harness on synthetic data, not a production operation.</summary>
 internal static class UiSmoke
 {
-    public static async Task RunAsync(MainWindow window, MainViewModel vm, string directory)
+    public static async Task<bool> RunAsync(MainWindow window, MainViewModel vm, string directory)
     {
         Directory.CreateDirectory(directory);
         var checks = new Dictionary<string, object>();
@@ -74,12 +74,17 @@ internal static class UiSmoke
             if (vm.CurrentPlan.Replacements != 1000) throw new InvalidOperationException("All mode was limited by UI filter");
             vm.Filter = ""; vm.LanguageIndex = 0; window.Width = Math.Min(1320, SystemParameters.WorkArea.Width - 32); window.Height = Math.Min(880, SystemParameters.WorkArea.Height - 32);
             if (App.HasFatalError) throw new InvalidOperationException("Fatal UI error; UI test must fail");
+            checks["StartWithWindowsDisabledInDemo"] = !vm.CanStartWithWindows;
+            if (vm.CanStartWithWindows) throw new InvalidOperationException("Startup toggle must be disabled in demo");
+            vm.ConnectionExpanded = true; await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            Save(window, Path.Combine(directory, "en-connection.png")); vm.ConnectionExpanded = false;
             checks["Passed"] = true;
         }
         catch (Exception ex) { checks["Passed"] = false; checks["Error"] = ex.ToString(); }
         await JsonFiles.WriteAsync(Path.Combine(directory, "ui-checks.json"), checks);
+        return checks["Passed"] is true;
     }
-    private static void Save(Window window, string path, double scale = 1)
+    internal static void Save(Window window, string path, double scale = 1)
     {
         window.UpdateLayout();
         var visual = (FrameworkElement)window.Content;

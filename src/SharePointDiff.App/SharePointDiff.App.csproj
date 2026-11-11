@@ -3,6 +3,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- Windows Forms only for the NotifyIcon of the tray agent. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>SharePointDiff</AssemblyName>
     <RootNamespace>SharePointDiff.App</RootNamespace>
@@ -10,8 +12,10 @@
     <SelfContained>false</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
   </PropertyGroup>
+  <!-- Keep WPF names unambiguous: WinForms/Drawing types are used through the Forms and Drawing aliases. -->
+  <ItemGroup><Using Remove="System.Windows.Forms" /><Using Remove="System.Drawing" /></ItemGroup>
   <ItemGroup><ProjectReference Include="..\SharePointDiff.Core\SharePointDiff.Core.csproj" /></ItemGroup>
   <ItemGroup><EmbeddedResource Update="Resources\Strings.resx"><Generator></Generator></EmbeddedResource></ItemGroup>
 </Project>

@@ -16,6 +16,14 @@
           "Microsoft.IdentityModel.Abstractions": "8.14.0"
         }
       },
+      "Microsoft.Identity.Client.Extensions.Msal": {
+        "type": "Transitive",
+        "resolved": "4.92.0",
+        "contentHash": "dQm4p27eitqWdJiIMoqn043Yx19OiFpHqYZGrP3cW5Ew3h3dQSPwD0kLC6xPlzVCQPYuAaNDl6f0xh//uLFVDQ==",
+        "dependencies": {
+          "Microsoft.Identity.Client": "4.92.0"
+        }
+      },
       "Microsoft.IdentityModel.Abstractions": {
         "type": "Transitive",
         "resolved": "8.14.0",
@@ -24,7 +32,8 @@
       "sharepointdiff.core": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Identity.Client": "[4.92.0, )"
+          "Microsoft.Identity.Client": "[4.92.0, )",
+          "Microsoft.Identity.Client.Extensions.Msal": "[4.92.0, )"
         }
       }
     },

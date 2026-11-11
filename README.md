@@ -11,6 +11,7 @@ Thư viện đi kèm / Bundled dependencies: [Third-party notices](THIRD-PARTY-N
 **Chỉ đọc SharePoint. Không upload, sửa metadata trên site, xoá hoặc di chuyển tệp chỉ có ở local. Mọi lần ghi đè local đều có bản sao lưu đã kiểm tra SHA-256.**
 
 - [Hướng dẫn tiếng Việt](#hướng-dẫn-tiếng-việt)
+- [Kiểm tra khi đăng nhập Windows](#8-kiểm-tra-khi-đăng-nhập-windows)
 - [English guide](#english-guide)
 - [Build, kiểm thử và Git](#build-kiểm-thử-và-git)
 - [Kiến trúc và nguồn tham khảo](#kiến-trúc-và-nguồn-tham-khảo)
@@ -40,6 +41,8 @@ Mỗi tenant cần một ứng dụng Entra ID đã được quản trị viên 
 | Consent | Được quản trị viên cấp theo chính sách tổ chức |
 | Secret / certificate | Không cần cho đăng nhập tương tác này |
 
+Hãy dùng một ứng dụng Entra **chỉ đọc riêng cho SharePoint Diff** với đúng hai quyền trên. Phiên đăng nhập chỉ được lưu khi **mọi** quyền trong token là quyền đọc đã biết (như `Sites.Read.All`, `AllSites.Read`, `User.Read`). Nếu Client ID có quyền khác thì ứng dụng vẫn chỉ gửi GET, nhưng **không lưu phiên đăng nhập** của app đó, không cho bật kiểm tra khi đăng nhập Windows và hiện cảnh báo `WriteScopedApp`. Ví dụ quyền khác là quyền ghi (`AllSites.FullControl`, `Sites.ReadWrite.All`, `TermStore.ReadWrite.All` của bộ công cụ PnP), hoặc quyền theo từng site như `Sites.Selected` mà token không cho biết mức. Khi Kết nối, ứng dụng kiểm tra token của cả Graph lẫn SharePoint trước. Nếu không kiểm được cả hai thì không để lại gì trên đĩa.
+
 Ứng dụng dùng MSAL.NET và trình duyệt hệ thống, hỗ trợ MFA. Không dùng device-code login, không yêu cầu tắt Security Defaults và không tự đăng ký ứng dụng hay cấp quyền. Một Client ID chỉ dùng được tại tenant nơi nó được đăng ký hoặc chấp thuận phù hợp.
 
 Nếu chạy trong cùng cây công cụ với `sp_chuanhoa\cauhinh\cauhinh.json`, lần đầu ứng dụng có thể đọc Tenant, Client ID, site và thư mục mặc định từ cấu hình có sẵn. Tệp cấu hình gốc không bị sửa. Nếu không có cấu hình đó, tạo hồ sơ mới trong giao diện.
@@ -53,7 +56,9 @@ Nếu chạy trong cùng cây công cụ với `sp_chuanhoa\cauhinh\cauhinh.json
 5. Bấm **Kết nối** và hoàn tất đăng nhập Microsoft. Tài khoản phải có quyền vào site; có thể cần hai lượt cấp token cho Graph và SharePoint, dùng cùng phiên đăng nhập.
 6. Chọn các thư viện cần đối chiếu. Thư viện tài liệu không ẩn được chọn mặc định. Sau kết nối, phần cấu hình thu gọn để nhường chỗ cho bảng.
 
-Hồ sơ và ngôn ngữ được lưu tại `%LOCALAPPDATA%\SharePointDiff\settings.json`. Tệp này chỉ chứa thông tin cấu hình, không chứa mật khẩu hay token. Token chỉ nằm trong bộ nhớ phiên chạy.
+Hồ sơ và ngôn ngữ được lưu tại `%LOCALAPPDATA%\SharePointDiff\settings.json`. Tệp này chỉ chứa thông tin cấu hình, không chứa mật khẩu hay token.
+
+Phiên đăng nhập Microsoft (token cache của MSAL) được lưu **mã hoá DPAPI theo tài khoản Windows hiện tại** trong `%LOCALAPPDATA%\SharePointDiff\msal\`, để lần sau và khi kiểm tra nền không phải đăng nhập lại. Tài khoản Windows khác không giải mã được; chương trình nào chạy dưới chính tài khoản Windows của bạn thì giải mã được. Mật khẩu không bao giờ được lưu. Bấm **Quên đăng nhập** để xoá phiên đã lưu của hồ sơ đang chọn. Token có quyền ghi không bao giờ được giữ trên đĩa.
 
 Cấu hình mẫu có hai tenant ở [`samples/settings.example.json`](samples/settings.example.json). Các Client ID trong mẫu là giá trị giả: thay bằng ID được cấp cho từng tenant, URL site và thư mục có thật. Có thể tạo hồ sơ bằng giao diện; nếu chỉnh JSON thủ công, đóng ứng dụng và sao lưu cấu hình hiện tại trước khi chỉnh. `SelectedProfile` là chỉ số bắt đầu từ `0`; `Language` nhận `vi-VN` hoặc `en-US`.
 
@@ -61,7 +66,9 @@ Cấu hình mẫu có hai tenant ở [`samples/settings.example.json`](samples/s
 
 Bấm **So sánh**. Bước này đọc danh sách và metadata SharePoint, tính lại QuickXorHash và SHA-256 của local; **không tải nội dung tệp SharePoint**.
 
-Ứng dụng đọc local trong thư mục đã chọn để tìm bản có thể tái dùng. Phạm vi hiển thị/cập nhật là các thư viện đã chọn, cùng các tệp rời ở gốc local. Tệp trong thư viện không chọn không bị cập nhật.
+Ứng dụng chỉ đọc các thư mục local ứng với thư viện đã chọn cùng các tệp rời ở gốc; thư mục khác ở gốc (ví dụ thư mục sao lưu riêng của bạn) không bị đọc hay băm. Bản cùng hash trong phạm vi đó được tái dùng. Tệp trong thư viện không chọn không bị cập nhật. Tệp tạm `*.spdiff-<guid>.tmp` còn sót sau một lần bị ngắt được báo lỗi `StaleInstallTemp`, không bị so sánh hay tự xoá.
+
+Nếu đăng nhập hết hạn giữa chừng, lượt So sánh dừng ngay thay vì băm toàn bộ thư mục rồi báo lỗi từng thư viện. Bộ lọc **Đã sửa ở local** hiện các tệp khác biệt mà bản local khác bản đã đồng bộ lần trước.
 
 | Trạng thái | Ý nghĩa |
 |---|---|
@@ -108,6 +115,8 @@ Với thư mục local `D:\Mirror`, dữ liệu đi kèm mặc định nằm ở
 ```text
 Mirror_SPDiff/<site-id-hash>/
   library-mappings.json         # ID thư viện -> tên thư mục local ổn định
+  library-selection.json        # Thư viện đã thấy/đã chọn ở lần So sánh gần nhất (dùng cho kiểm tra nền)
+  backup-sequence.json          # Bộ đếm thứ tự sao lưu
   remote-snapshot.json          # Metadata SharePoint ở lần quét
   installed-manifest.json       # Metadata gắn với đúng hash bản local đã xác nhận
   cache/                        # Bản tải hợp lệ và tệp .partial để chạy tiếp
@@ -115,24 +124,35 @@ Mirror_SPDiff/<site-id-hash>/
     scan.json, diff.csv, metadata.csv
     plan.json
     backups/<cây đường dẫn cũ>   # Bản local trước khi ghi đè
+    backup-meta/<id>.json        # Hash, nguồn gốc và số thứ tự của từng bản sao lưu
+    prune-plan.json, pruned.json # Những gì quy tắc xoay vòng sắp xoá / đã xoá
     intents/, committed/         # Dấu vết trước/sau thao tác ghi
     results.json, results.csv
     remote-metadata.csv, summary.txt
     errors/                     # Lỗi cụ thể theo tệp
 ```
 
-Các tệp trong `runs/` xuất hiện tuỳ loại tác vụ: quét tạo bộ `scan`, cập nhật tạo bộ `plan/results/backups`. Không tự dọn cache hoặc xoá sao lưu.
+Các tệp trong `runs/` xuất hiện tuỳ loại tác vụ: quét tạo bộ `scan`, cập nhật tạo bộ `plan/results/backups`. Tệp `Mirror_SPDiff/mirror.lock` ngăn hai lượt quét/đồng bộ chạy cùng lúc trên một thư mục (lỗi `WorkspaceBusy`).
+
+Quy tắc dọn (chỉ chạy cuối một lượt Thực hiện/Đồng bộ hoàn tất, không bị huỷ hay dừng):
+
+- **Sao lưu là phiên bản SharePoint cũ** (bản local trước khi thay đúng bằng bản đã đồng bộ và xác minh trước đó): mỗi tệp giữ **3 phiên bản khác nhau mới nhất**, bản cũ hơn và bản trùng bị xoá vĩnh viễn. Phiên bản đó vẫn có thể lấy lại từ version history của SharePoint khi còn tồn tại. Việc so khớp dựa trên QuickXorHash (không phải hash mật mã).
+- **Sao lưu chứa chỉnh sửa local, không rõ nguồn gốc, hoặc không có hash SharePoint được giữ vĩnh viễn.** Sao lưu của lượt chưa hoàn tất hoặc lượt thay bị ngắt cũng được giữ.
+- Trước khi xoá, `prune-plan.json` ghi đầy đủ dấu vết (đường dẫn, hash, ItemId, ETag, WebUrl, ngày sửa); mỗi bản được băm lại và chỉ bị xoá khi khớp đúng bản ghi. `pruned.json` ghi kết quả.
+- **Cache:** giữ bản của các phiên bản đang cài (khôi phục được khi không có mạng nếu lỡ xoá tệp local); xoá bản của phiên bản đã bị thay, chỉ với thư viện được đọc đầy đủ ở lần quét đó. Tệp `.invalid_*` và tệp lạ không bị đụng tới.
 
 JSON giữ kiểu dữ liệu và các giá trị gốc; CSV metadata có tên nội bộ, tên hiển thị, loại, giá trị gốc và giá trị hiển thị của cột. Bao gồm lookup/người dùng, taxonomy và đa giá trị mà tài khoản đọc được. Cột lỗi hoặc thiếu không bị âm thầm bỏ qua.
 
 Nếu giữ một bản local khác biệt, metadata SharePoint mới chỉ là **snapshot remote**, không bị gán nhầm là metadata của bản local đó.
 
-Để khôi phục một tệp, đóng tài liệu đang mở, tìm hàng tương ứng trong `results.csv`, lấy bản ở `BackupPath` và sao chép về đường dẫn cũ sau khi tự kiểm tra. Tệp `.metadata.json` kèm sao lưu ghi hash và thông tin cần đối chiếu.
+Để khôi phục một tệp, đóng tài liệu đang mở, tìm hàng tương ứng trong `results.csv`, lấy bản ở `BackupPath` và sao chép về đường dẫn cũ sau khi tự kiểm tra. Bản ghi `runs/<run>/backup-meta/<id>.json` chứa hash và thông tin cần đối chiếu (bản v1.0 để `.metadata.json` ngay cạnh sao lưu). Nếu không thấy bản cần tìm, xem `pruned.json` rồi lấy lại từ version history của SharePoint. Đường dẫn sao lưu có thể dài hơn 260 ký tự: dùng PowerShell 7 `Copy-Item -LiteralPath` hoặc `robocopy` thay vì Explorer.
 
 ### 7. Dừng, thử lại và đọc lỗi
 
 - **Dừng** huỷ công việc chưa hoàn tất. Các tệp đã cài đặt hợp lệ vẫn được giữ và có báo cáo; không hoàn tác âm thầm các kết quả đã hoàn tất.
-- Chạy so sánh/thực hiện lại để thử lại tệp lỗi. Bản tải hoàn chỉnh đã xác minh được dùng lại. Tệp dở chỉ tiếp tục khi phiên bản nguồn không đổi và máy chủ hỗ trợ Range; nếu không, lượt tải đó bắt đầu lại.
+- Chạy so sánh/thực hiện lại để thử lại tệp lỗi. Bản tải hoàn chỉnh đã xác minh được dùng lại. Tệp dở chỉ tiếp tục khi nội dung nguồn không đổi (cùng dung lượng và hash; sửa cột metadata không làm mất phần đã tải) và máy chủ hỗ trợ Range; nếu không, lượt tải đó bắt đầu lại.
+- Khi mạng chập chờn: lượt tải không nhận được byte nào trong 60 giây được coi là treo; kết nối bị ngắt, URL tải hết hạn hay máy chủ bận cũng được thử lại. Mỗi lần thử lấy URL tải mới và tải tiếp bằng Range từ phần đã có, tối đa 8 lần (chờ 5 s, nhân đôi, tối đa 60 s). `results.csv` có cột `Attempts` và `Stalls`. Lỗi ghi đĩa local không bao giờ bị thử lại. Hết lượt thử thì phần đã tải vẫn được giữ để lần sau tải tiếp.
+- Hết thời gian chờ được báo là lỗi (`RequestTimeout`), không phải huỷ.
 - Khi bị giới hạn truy cập, ứng dụng chờ theo `Retry-After`. Không tạo thêm lượt tải cho tệp chưa chọn chỉ để kiểm tra hash.
 - Mở **Chi tiết kỹ thuật & nguyên nhân** và **Sao chép lỗi** để lấy thao tác, tệp/tài nguyên, nguyên nhân, mã HTTP/request ID khi có, đường dẫn log và stack trace.
 - Lỗi vận hành dự kiến như tệp bị khoá, hết dung lượng hoặc mất quyền được ghi theo từng tệp. Bản gốc chưa được phép thay vẫn được giữ; nếu đã có sao lưu thì đường dẫn sao lưu được ghi trong báo cáo.
@@ -148,8 +168,40 @@ Nếu giữ một bản local khác biệt, metadata SharePoint mới chỉ là 
 | HashMismatch | Không dùng bản tải sai; bản sai được giữ tách biệt khỏi cache hợp lệ |
 | FileIoError | Đóng tài liệu đang mở; kiểm tra quyền ghi và dung lượng |
 | PathCollision / InvalidPath | Kiểm tra tên Unicode, tệp/thư mục trùng tên và tên không hợp lệ trên Windows; công cụ không tự đổi tên |
+| SignInRequired | Phiên đăng nhập đã lưu không còn hoặc hết hạn; bấm Đăng nhập/Kết nối |
+| WriteScopedApp | Client ID không chỉ có quyền đọc; dùng app chỉ đọc riêng (mục 2) |
+| WorkspaceBusy | Một lượt quét/đồng bộ khác đang dùng thư mục; chờ rồi thử lại |
+| RequestTimeout / ServiceUnavailable | Mạng chậm hoặc SharePoint bận; thử lại sau |
+| DownloadStalled / DownloadInterrupted | Mạng treo hoặc đứt khi tải; phần đã tải được giữ, chạy lại để tải tiếp |
+| StaleInstallTemp | Tệp tạm còn sót sau lần bị ngắt; kiểm tra rồi tự xoá |
+| AgentNotReady / NoLibrariesSelected | Bấm So sánh một lần cho site và thư mục này, với ít nhất một thư viện được chọn |
 
 Phạm vi v1: SharePoint Online thương mại và bản tệp hiện hành. Không đồng bộ ngược, không tải lịch sử phiên bản/quyền/chú thích, không diễn giải nội dung tài liệu. Trước khi dùng “ghi đè tất cả” trên một thư mục mới, thử quy trình trên thư mục thử riêng.
+
+### 8. Kiểm tra khi đăng nhập Windows
+
+Tuỳ chọn **Kiểm tra thay đổi khi đăng nhập Windows** trong phần Kết nối giúp có sẵn bản local khi M365 online chậm. Mỗi lần đăng nhập Windows, biểu tượng SharePoint Diff ở khay hệ thống sẽ kiểm tra nền rồi **hỏi trước khi ghi bất cứ thứ gì** vào thư mục.
+
+- **Điều kiện bật:** đã bấm So sánh ít nhất một lần cho đúng site và thư mục đang chọn; dùng app Entra chỉ đọc; không đặt `SPDIFF_SETTINGS_PATH`; không chạy ở chế độ demo. Tuỳ chọn có hiệu lực từ lần đăng nhập Windows sau.
+- **Cách chạy:**
+  1. Ứng dụng tự đăng ký mục `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`"<exe>" --agent`); không cần quyền admin, không dùng Windows Service.
+  2. Sau khoảng 60 giây, agent chờ mạng (tối đa 15 phút) và lấy token đã lưu.
+  3. Agent quét **chỉ các thư viện đã chọn ở lần So sánh gần nhất**, ưu tiên thấp. Thư viện mới xuất hiện sau đó chưa được kiểm tra cho tới khi bạn So sánh lại.
+  4. Lỗi tạm thời được thử lại trong 60 phút. Agent không kiểm tra lại khi mở khoá hay thức dậy từ Sleep; dùng **Kiểm tra ngay** trong menu khay.
+- **Thẻ thông báo** (góc dưới phải) hiện:
+  - số tệp mới và tệp cập nhật kèm dung lượng;
+  - **các tệp khác bản đồng bộ lần trước**: sửa ở cả hai phía, chỉ sửa ở máy này, hoặc chưa từng đồng bộ. Có tên tối đa 5 tệp;
+  - mục cần xem, thư viện mới hoặc lỗi, ước tính tải và sao lưu.
+
+  Nút **Đồng bộ** tải mọi tệp thiếu và **thay mọi tệp khác biệt, kể cả tệp bạn đã sửa ở local**, luôn sao lưu và kiểm tra trước. **Chi tiết** mở cửa sổ chính ở chế độ Không ghi đè để bạn tự chọn. **Để sau** không làm gì. Nếu không có thay đổi, chỉ tooltip cập nhật.
+- **Đăng nhập:** khi phiên đã lưu hết hạn, biểu tượng chuyển màu cam và thẻ "Cần đăng nhập" hiện ra. Trình duyệt **chỉ mở khi bạn bấm** Đăng nhập.
+- **Nên làm:**
+  - Ghim biểu tượng (Settings > Personalization > Taskbar > Other system tray icons).
+  - Đặt `SharePointDiff.exe` ở thư mục cố định như `%LOCALAPPDATA%\Programs\SharePointDiff`. Sau khi chuyển thư mục, mở bản mới và bấm **Dùng bản này**.
+  - Thoát agent trước khi publish lại, và gỡ các bản v1.0 (chúng không lấy khoá thư mục).
+  - Nếu tải ZIP từ Internet, chọn Unblock trước khi giải nén.
+- **Tắt:** bỏ chọn tuỳ chọn (luôn bỏ chọn được, kể cả khi điều kiện bật không còn đúng; mục Run bị gỡ), hoặc chọn Thoát trong menu khay. Nếu tắt trong Task Manager, cửa sổ chính sẽ báo đang bị tắt.
+- **Kiểm tra ngay** dừng lượt kiểm tra khi đăng nhập đang chờ mạng hoặc chờ thử lại, rồi kiểm tra ngay. So sánh hoặc Thực hiện trong cửa sổ chính sẽ huỷ thẻ thông báo cũ của agent. Một lượt Đồng bộ bị dừng hoặc còn lỗi được báo "Đồng bộ chưa xong", không báo "Đã khớp".
 
 ## English guide
 
@@ -167,13 +219,13 @@ Windows x64 with **.NET 10 Windows Desktop Runtime**. Download the Windows x64 Z
 4. The registered public desktop application needs `http://localhost` redirect, delegated Graph `Sites.Read.All` and SharePoint `AllSites.Read`, with consent according to your organization. No client secret is used.
 5. Click **Connect**, complete Microsoft browser sign-in/MFA, then select document libraries.
 
-Settings are stored in `%LOCALAPPDATA%\SharePointDiff\settings.json`; passwords and tokens are not saved. A compatible existing `sp_chuanhoa` configuration can be imported without modifying it. Each tenant uses its own connection profile. No security policy or application permission is changed by this program.
+Settings are stored in `%LOCALAPPDATA%\SharePointDiff\settings.json` (no passwords or tokens). The Microsoft sign-in (MSAL token cache) is saved **encrypted with DPAPI for the current Windows user** in `%LOCALAPPDATA%\SharePointDiff\msal\`, so later runs and the background check need no new sign-in; other Windows accounts cannot decrypt it, programs running as your own account can. **Forget sign-in** removes it. Use a dedicated **read-only** Entra app. A sign-in is saved only when **every** scope in the token is a known read-only scope (such as `Sites.Read.All`, `AllSites.Read`, `User.Read`). Anything else means the sign-in is never kept on disk, checking at Windows sign-in is unavailable and the app shows `WriteScopedApp`. Examples are write scopes (a PnP app with `AllSites.FullControl`) and per-site grants such as `Sites.Selected` whose level the token does not show. Connect checks both the Graph and the SharePoint token first and keeps nothing on disk unless both pass. A compatible existing `sp_chuanhoa` configuration can be imported without modifying it. Each tenant uses its own connection profile. No security policy or application permission is changed by this program.
 
 See [`samples/settings.example.json`](samples/settings.example.json) for two tenant profiles. Replace all example IDs, the site URL and local path with your own values. Prefer editing profiles in the UI; close the application and back up existing settings before editing JSON manually. `SelectedProfile` is zero-based; `Language` accepts `vi-VN` or `en-US`.
 
 ### Compare and select actions
 
-**Compare** reads inventory/metadata and hashes local files. It never downloads remote file content. The statuses are Hash match, Missing locally, Different size/hash, Local only, Hash unverified and Error/conflict.
+**Compare** reads inventory/metadata and hashes local files in the selected library folders plus loose root files (other root folders are not read). It never downloads remote file content. A sign-in failure stops the scan at once. Leftover `*.spdiff-<guid>.tmp` files from an interrupted run are reported as `StaleInstallTemp`, never compared or deleted. The **Locally changed** filter lists differences whose local copy is not the last synced version. The statuses are Hash match, Missing locally, Different size/hash, Local only, Hash unverified and Error/conflict.
 
 QuickXorHash plus size is used for SharePoint comparison; SHA-256 verifies backups and installed bytes. QuickXorHash is non-cryptographic. Equal size alone does not prove equal content. The tool does not open documents or explain textual changes.
 
@@ -187,19 +239,56 @@ Unverified equal-size files, local-only files and errors are excluded from autom
 
 ### Backups, metadata and reports
 
-For `D:\Mirror`, application data is placed in the sibling `D:\Mirror_SPDiff\<site-hash>`. Each run has JSON/CSV reports. Every replacement requires a verified backup under `runs/<run>/backups/<original-path>`. Backups are never automatically removed.
+For `D:\Mirror`, application data is placed in the sibling `D:\Mirror_SPDiff\<site-hash>`; `D:\Mirror_SPDiff\mirror.lock` keeps two scans/syncs off the same folder (`WorkspaceBusy`). Each run has JSON/CSV reports. Every replacement requires a verified backup under `runs/<run>/backups/<original-path>`, described by `runs/<run>/backup-meta/<id>.json`.
+
+Retention runs only at the end of a complete, uncancelled Apply or Sync:
+
+- **Backups that are earlier SharePoint versions** (the replaced bytes equal a previously synced and verified version): the **3 newest distinct versions per file** are kept; older and duplicate copies are deleted permanently. They may still be recovered from SharePoint version history while it exists. Matching relies on QuickXorHash, which is not cryptographic.
+- **Backups of local edits, of unknown origin or without a SharePoint hash are kept forever**, as are backups from unfinished runs or interrupted replacements.
+- `prune-plan.json` records full tombstones (path, hashes, ItemId, ETag, WebUrl, modified date) before anything is deleted; each backup is re-hashed and deleted only if it matches its record; `pruned.json` records the outcome.
+- **Cache:** entries of installed versions are kept (offline restore); entries of superseded versions are deleted, only for libraries read completely in that scan. `.invalid_*` and foreign files are left alone.
 
 Downloads are staged and checked against current remote metadata/hash. Local changes since the scan prevent replacement. The final Windows replacement is atomic and the installed bytes are verified. File creation/modification dates follow SharePoint.
 
 Full readable column values, schema, lookups, taxonomy and multivalues are saved separately as typed JSON and readable CSV. File bytes are not modified to embed metadata. `remote-snapshot.json` describes remote observations; `installed-manifest.json` associates metadata with verified local content, so skipped local differences are not labelled with the wrong remote version.
 
-Use **Reports** to find `results.csv`, backup locations, SHA-256 values, downloaded byte counts and per-file diagnostics. To restore, close the affected document and manually copy the verified backup to its original path after reviewing the report.
+Use **Reports** to find `results.csv`, backup locations, SHA-256 values, downloaded byte counts and per-file diagnostics. To restore, close the affected document and manually copy the verified backup to its original path after reviewing the report; check `pruned.json` if a version is missing. Backup paths can exceed 260 characters: use PowerShell 7 `Copy-Item -LiteralPath` or `robocopy` rather than Explorer.
 
 ### Cancellation and failures
 
-**Stop** cancels outstanding work but preserves completed installations and their audit records. Verified downloads are reused on retry. Partial content resumes only when the source version is unchanged and the server supports Range. Up to two transfers run concurrently; throttling honors `Retry-After`.
+**Stop** cancels outstanding work but preserves completed installations and their audit records. Verified downloads are reused on retry. Partial content resumes when the source bytes are unchanged (same size and hash; a metadata-only edit keeps the partial) and the server supports Range. Up to two transfers run concurrently; throttling honors `Retry-After`.
+
+On an unreliable line a download that receives no byte for 60 s is treated as stalled; dropped connections, expired download URLs and busy servers are retried too. Every attempt asks for a fresh download URL and resumes with Range, up to 8 attempts (5 s, doubling, at most 60 s apart). `results.csv` reports `Attempts` and `Stalls`. Local write failures are never retried. A partial file left after the last attempt resumes next time. Timeouts are reported as errors (`RequestTimeout`), not as cancellations.
 
 Expected operational errors are reported per file. Expand **Technical details & cause** and use **Copy error** for the exact operation, path, root cause, HTTP status/request ID, log and stack trace. Unexpected programming exceptions stop processing and terminate the application with exit code `1` after the diagnostic dialog is closed; they are not swallowed to continue running.
+
+New error codes: `SignInRequired`, `WriteScopedApp`, `WorkspaceBusy`, `RequestTimeout`, `ServiceUnavailable`, `DownloadStalled`, `DownloadInterrupted`, `StaleInstallTemp`, `AgentNotReady`, `NoLibrariesSelected` (see the Vietnamese table for the action to take).
+
+### Check at Windows sign-in
+
+The **Check for changes when I sign in to Windows** option keeps a local copy ready for when M365 online is slow. It needs a completed Compare for the current site and folder, a read-only app, no `SPDIFF_SETTINGS_PATH` and non-demo mode. It takes effect at the next Windows sign-in.
+
+1. The app registers its own `HKCU\...\CurrentVersion\Run` entry (`"<exe>" --agent`): no admin rights, no Windows service.
+2. About 60 s after sign-in the tray agent waits for the network (up to 15 min) and uses the saved sign-in.
+3. It scans, at low priority, only the libraries ticked at the last Compare; libraries added later are left out until the next Compare. Transient failures are retried for up to 60 min.
+4. It does not re-check on unlock or resume from Sleep; use **Check now** in the tray menu.
+
+The card (bottom-right) shows:
+- new and updated files with sizes;
+- **files that differ from the last synced copy** (changed on both sides, changed only on this computer, never synced), naming up to 5;
+- items to review, new or unreadable libraries, and the download and backup estimate.
+
+**Sync** downloads every missing file and **replaces every differing file, including your local edits**, always after a verified backup. **Details** opens the main window in Keep-local mode. **Later** does nothing.
+
+Nothing is written to the folder before you click Sync. When the saved sign-in has expired the icon turns amber and a Sign-in card appears; the browser opens **only when you click**.
+
+Keep the exe in a stable folder such as `%LOCALAPPDATA%\Programs\SharePointDiff`, and use **Use this copy** after moving it. Before using the option:
+- pin the tray icon;
+- exit the agent before republishing;
+- remove v1.0 copies, which ignore the folder lock;
+- unblock a downloaded ZIP.
+
+Untick the option (always possible, even when the conditions for turning it on no longer hold), or choose Exit in the tray menu, to stop it. **Check now** stops a logon check that is waiting for the network or a retry and checks at once. A Compare or Apply in the main window drops the agent's out-of-date prompt. A stopped or partly failed Sync is reported as incomplete, never as up to date.
 
 Version 1 supports commercial SharePoint Online and current file versions only. It does not upload, synchronize permissions or download version history/comments. Validate replacement on a separate test folder before using a new production mirror.
 
@@ -220,7 +309,7 @@ Có thể chạy `scripts\Publish.ps1` bằng PowerShell 7 để restore theo lo
 
 Chạy `scripts\Package.ps1` bằng PowerShell 7 để build, chạy kiểm thử và tạo ZIP cùng SHA-256 trong `dist\v<version>`. Script chỉ đóng gói danh sách tệp phát hành xác định sẵn, kiểm tra số mục và hash executable trong ZIP; không tự đăng lên GitHub. `dist` không được đưa vào Git.
 
-Kiểm thử lõi dùng tệp giả lập và HTTP giả lập: hash độc lập, Unicode, chọn từng tệp/tất cả, không tải khi quét, giữ local-only, backup, nguồn/local thay đổi, tải sai, metadata, huỷ/thử lại, HTTP Range và throttling. Không ghi lên SharePoint hoặc hồ sơ dự án thật.
+Kiểm thử lõi dùng tệp giả lập, HTTP giả lập và đồng hồ giả: hash độc lập, Unicode, chọn từng tệp/tất cả, không tải khi quét, giữ local-only, backup, nguồn/local thay đổi, tải sai, metadata, huỷ/thử lại, HTTP Range và throttling. Phần mới gồm: tải tiếp khi treo hoặc đứt mạng, xoay vòng sao lưu và dọn cache, khoá thư mục, kiểm tra nền, và cache đăng nhập DPAPI cùng chặn token có quyền ghi. Không ghi lên SharePoint hoặc hồ sơ dự án thật.
 
 Chạy giao diện với 10.000 tệp giả, không kết nối hay cập nhật dữ liệu:
 
@@ -233,6 +322,13 @@ Chế độ kiểm tra giao diện dành cho phát triển xuất ảnh và JSON
 ```powershell
 .\publish\win-x64\SharePointDiff.exe --demo --ui-smoke D:\Temp\SharePointDiff-UI
 ```
+
+Các cờ khác:
+- `--demo --agent` chạy agent khay với dữ liệu giả (không đọc cấu hình, registry hay mạng).
+- `--demo --agent --ui-smoke <thư-mục>` kiểm tra agent và thẻ thông báo.
+- Hai lệnh smoke thoát `0` khi đạt, `3` khi không đạt.
+- `--demo --agent --fatal-smoke tray` kiểm tra lỗi phát sinh từ menu khay.
+- `scripts\Smoke.ps1 -Exe <đường-dẫn-exe>` (PowerShell 7) chạy cả bốn lượt với cấu hình cách ly và xác nhận không đụng gì ngoài `tmp\`.
 
 `--demo --fatal-smoke` chủ động tạo lỗi để kiểm tra log và mã thoát `1`, không hiện hộp lỗi tương tác. Không dùng các cờ kiểm thử này cho quy trình sử dụng thông thường. Biến môi trường `SPDIFF_SETTINGS_PATH` có thể chuyển cấu hình/log sang thư mục thử riêng.
 
@@ -248,8 +344,8 @@ Chế độ kiểm tra giao diện dành cho phát triển xuất ảnh và JSON
 
 | Thành phần | Trách nhiệm |
 |---|---|
-| `SharePointDiff.App` | WPF/MVVM, Fluent light theme, tài nguyên VI/EN, hồ sơ và lỗi chi tiết |
-| `SharePointDiff.Core` | MSAL, Graph/REST chỉ đọc, kiểm kê, hash, kế hoạch cập nhật, cache/backup/manifest |
+| `SharePointDiff.App` | WPF/MVVM, Fluent light theme, tài nguyên VI/EN, hồ sơ và lỗi chi tiết; agent khay (`--agent`) |
+| `SharePointDiff.Core` | MSAL (cache DPAPI), Graph/REST chỉ đọc, kiểm kê, hash, kế hoạch cập nhật, cache/backup/manifest, xoay vòng, kiểm tra nền |
 | `SharePointDiff.Tests` | Kiểm thử dữ liệu thử và HTTP giả lập |
 
 Nguồn kỹ thuật:

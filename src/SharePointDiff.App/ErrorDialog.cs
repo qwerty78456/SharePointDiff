@@ -22,7 +22,7 @@ public static partial class ErrorDetails
     public static string Redact(string text) => Regex.Replace(text, @"(?i)(bearer\s+)[a-z0-9._~-]+|((?:access_token|refresh_token|client_secret|tempauth)=)[^\s&]+", "$1$2[redacted]");
     public static string Save(Exception ex, string operation, string? path = null)
     {
-        string directory = Path.Combine(Path.GetDirectoryName(SettingsStore.PathName)!, "logs");
+        string directory = SettingsStore.LogDirectory;
         Directory.CreateDirectory(directory);
         string log = Path.Combine(directory, "error-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + ".txt");
         // Exception reporting must not synchronously wait on an async UI-context continuation.

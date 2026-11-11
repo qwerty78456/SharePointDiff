@@ -46,6 +46,9 @@ public sealed class FileRow(DiffEntry entry, LocalizationService l, Func<Overwri
 
 public sealed class MainViewModel : Observable, IDisposable
 {
+    private const string Graph = "https://graph.microsoft.com";
+    /// <summary>Raised after a completed Compare or Apply, so the tray agent can drop a prompt that is now out of date.</summary>
+    public event Action? WorkspaceChanged;
     public LocalizationService L { get; } = new();
     public ObservableCollection<ConnectionProfile> Profiles { get; } = [];
     public ObservableCollection<LibraryRow> Libraries { get; } = [];
@@ -55,8 +58,10 @@ public sealed class MainViewModel : Observable, IDisposable
     public bool Demo { get; }
     private UserSettings settings;
     private SharePointReader? reader;
+    private BrowserAuthentication? session;
     private CancellationTokenSource? cancellation;
     private ScanResult? scan;
+    private IReadOnlySet<string> locallyChanged = new HashSet<string>();
     private bool busy, connected, bulkSelecting, connectionExpanded = true;
     private string siteUrl = "", localRoot = "", filter = "", statusCode = "Ready", progressPath = "", reportDirectory = "";
     private string tenant = "", client = "", profileName = "";
@@ -73,6 +78,7 @@ public sealed class MainViewModel : Observable, IDisposable
         languageIndex = settings.Language == "en-US" ? 1 : 0; L.Switch(languageIndex == 1 ? "en-US" : "vi-VN");
         FilesView = CollectionViewSource.GetDefaultView(Rows); FilesView.Filter = FilterRow;
         ConnectCommand = new(() => RunAsync(ConnectAsync), () => !Busy && !Demo);
+        ForgetSignInCommand = new(() => RunAsync(ForgetSignInAsync), () => !Busy && !Demo && ProfileIndex >= 0 && ProfileIndex < Profiles.Count);
         ScanCommand = new(() => RunAsync(ScanAsync), () => !Busy && connected && Libraries.Any(x => x.Selected));
         ApplyCommand = new(() => RunAsync(ApplyAsync), () => !Busy && !Demo && scan != null && CurrentPlan.Items.Count > 0);
         CancelCommand = new(() => cancellation?.Cancel(), () => Busy);
@@ -84,8 +90,10 @@ public sealed class MainViewModel : Observable, IDisposable
         OpenReportsCommand = new(OpenReports, () => Directory.Exists(reportDirectory));
         CopyErrorCommand = new(() => { try { Clipboard.SetText(ErrorDetail); } catch { } }, () => ErrorDetail.Length > 0);
         L.PropertyChanged += (_, _) => RefreshLanguage();
+        UseThisCopyCommand = new(UseThisCopy, () => !Busy && CanStartWithWindows && settings.StartWithWindows);
         if (profileIndex >= 0) LoadProfileFields();
         if (demo) LoadDemo();
+        RefreshStartup();
     }
     public string SiteUrl { get => siteUrl; set { if (Set(ref siteUrl, value)) InvalidateConnection(); } }
     public string LocalRoot { get => localRoot; set { if (Set(ref localRoot, value)) InvalidateConnection(); } }
@@ -137,6 +145,7 @@ public sealed class MainViewModel : Observable, IDisposable
         get { var p = CurrentPlan; return L.Format("Estimate", p.Missing, p.Replacements, p.Reused, FileRow.FormatBytes(p.NetworkBytes), FileRow.FormatBytes(p.BackupBytes)); }
     }
     public AsyncCommand ConnectCommand { get; }
+    public AsyncCommand ForgetSignInCommand { get; }
     public AsyncCommand ScanCommand { get; }
     public AsyncCommand ApplyCommand { get; }
     public RelayCommand CancelCommand { get; }
@@ -151,9 +160,9 @@ public sealed class MainViewModel : Observable, IDisposable
     {
         if (o is not FileRow r) return false;
         if (Filter.Length > 0 && !r.Path.Contains(Filter, StringComparison.CurrentCultureIgnoreCase)) return false;
-        return StatusFilterIndex switch { 1 => r.Entry.Status == DiffStatus.MissingLocal, 2 => r.Entry.IsDifference, 3 => r.Entry.Status == DiffStatus.LocalOnly, 4 => r.Entry.Status is DiffStatus.Error or DiffStatus.Unverified, 5 => r.Entry.Status == DiffStatus.Match, _ => true };
+        return StatusFilterIndex switch { 1 => r.Entry.Status == DiffStatus.MissingLocal, 2 => r.Entry.IsDifference, 3 => r.Entry.Status == DiffStatus.LocalOnly, 4 => r.Entry.Status is DiffStatus.Error or DiffStatus.Unverified, 5 => r.Entry.Status == DiffStatus.Match, 6 => locallyChanged.Contains(SafePaths.Key(r.Path)), _ => true };
     }
-    private void InvalidateConnection() { connected = false; scan = null; Libraries.Clear(); Rows.Clear(); RefreshPlan(); }
+    private void InvalidateConnection() { connected = false; scan = null; Libraries.Clear(); Rows.Clear(); RefreshPlan(); RefreshStartup(); }
     private void LoadProfileFields() { if (ProfileIndex < 0 || ProfileIndex >= Profiles.Count) return; var p = Profiles[ProfileIndex]; ProfileName = p.Name; Tenant = p.TenantId; Client = p.ClientId; }
     private void AddProfile() { ProfileIndex = -1; ProfileName = ""; Tenant = ""; Client = ""; InvalidateConnection(); }
     private void SaveProfile()
@@ -178,27 +187,57 @@ public sealed class MainViewModel : Observable, IDisposable
         if (ProfileIndex < 0 || ProfileIndex >= Profiles.Count) throw new OperationException("InvalidProfile");
         string site = SafePaths.SiteUri(SiteUrl).ToString().TrimEnd('/');
         if (!Directory.Exists(LocalRoot)) throw new OperationException("InvalidRoot");
-        reader?.Dispose(); reader = new(new BrowserAuthentication(Profiles[ProfileIndex]));
+        session = BrowserAuthentication.Shared(Profiles[ProfileIndex], SettingsStore.TokenCacheDirectory);
+        reader?.Dispose(); reader = new(session.Interactive);
         SetStatus("Connecting");
-        var workspace = new Workspace(site, LocalRoot);
-        var mappings = JsonFiles.Read<Dictionary<string, string>>(Path.Combine(workspace.DataRoot, "library-mappings.json")) ?? [];
-        var list = await reader.GetLibrariesAsync(site, mappings, ct);
-        Libraries.Clear(); foreach (var library in list) { var row = new LibraryRow(library); row.PropertyChanged += (_, _) => { scan = null; Rows.Clear(); RefreshPlan(); }; Libraries.Add(row); }
-        await JsonFiles.WriteAsync(Path.Combine(workspace.DataRoot, "library-mappings.json"), list.ToDictionary(x => x.Id, x => x.LocalFolder), ct);
+        // Sign in for both resources first, so the saved sign-in is checked read-only for Graph and SharePoint before anything else.
+        await session.SignInAsync([Graph, new Uri(site).GetLeftPart(UriPartial.Authority)], ct);
+        var list = await new DiffService(reader).ConnectAsync(site, LocalRoot, ct);
+        // Libraries known from the last Compare keep their tick; new ones start ticked as before.
+        LibrarySelection? previous;
+        try { previous = LibrarySelectionStore.Read(Workspace.DataRootFor(site, LocalRoot)); }
+        catch (OperationException) { previous = null; } // a damaged selection file is rewritten by the next Compare
+        var known = (previous?.Known ?? []).Select(LibrarySelectionStore.Id).ToHashSet();
+        var included = (previous?.Included ?? []).Select(LibrarySelectionStore.Id).ToHashSet();
+        Libraries.Clear();
+        foreach (var library in list)
+        {
+            string id = LibrarySelectionStore.Id(library.Id);
+            var row = new LibraryRow(library) { Selected = !known.Contains(id) || included.Contains(id) };
+            row.PropertyChanged += (_, _) => { scan = null; Rows.Clear(); RefreshPlan(); }; Libraries.Add(row);
+        }
         connected = true; ConnectionExpanded = false; SetStatus("Connected", list.Count, list.Count); Persist(); UpdateCommands();
+        // A write-capable app registration still works here, but its sign-in is never kept on disk.
+        if (session.PersistenceBlocked) Error = L["ErrorWriteScopedApp"];
+        RefreshStartup();
+    }
+    private async Task ForgetSignInAsync(CancellationToken ct)
+    {
+        if (ProfileIndex < 0 || ProfileIndex >= Profiles.Count) throw new OperationException("InvalidProfile");
+        await BrowserAuthentication.Shared(Profiles[ProfileIndex], SettingsStore.TokenCacheDirectory).ForgetAsync(ct);
+        reader?.Dispose(); reader = null; InvalidateConnection(); ConnectionExpanded = true; SetStatus("SignInForgotten");
     }
     private async Task ScanAsync(CancellationToken ct)
     {
         if (reader == null) throw new OperationException("InvalidProfile");
         var selected = Libraries.Where(x => x.Selected).Select(x => x.Value).ToArray();
-        string site = SiteUrl, root = LocalRoot; var progress = CreateProgress();
+        string site = DiffService.NormalizeSite(SiteUrl), root = LocalRoot; var progress = CreateProgress();
         scan = await Task.Run(() => new DiffService(reader).ScanAsync(site, root, selected, progress, ct), ct);
+        var workspace = new Workspace(site, root);
+        // A completed Compare is what the logon check reuses: which libraries exist and which are ticked.
+        LibrarySelection? previous;
+        try { previous = LibrarySelectionStore.Read(workspace.DataRoot); }
+        catch (OperationException) { previous = null; }
+        await LibrarySelectionStore.WriteAsync(workspace, LibrarySelectionStore.Merge(previous, Libraries.Select(x => x.Value), selected, DateTimeOffset.Now), ct);
+        var provenance = DiffService.Classify(scan.Entries, await ManifestStore.ReadAllAsync(workspace, ct));
+        locallyChanged = provenance.Where(p => p.Value != Provenance.Pristine).Select(p => p.Key).ToHashSet();
         Rows.Clear(); foreach (var e in scan.Entries) Rows.Add(new(e, L, () => (OverwriteMode)ModeIndex, RefreshPlan));
         modeIndex = 0; Raise(nameof(ModeIndex));
-        reportDirectory = new Workspace(site, root).DataRoot;
+        reportDirectory = workspace.DataRoot;
         if (scan.Issues.Count > 0) Error = L.Format("ScanIssues", scan.Issues.Count) + Environment.NewLine + string.Join(Environment.NewLine, scan.Issues.Take(20).Select(x => L["Error" + x.Code] + ": " + x.Path));
         if (scan.Issues.Count > 0) ErrorDetail = string.Join(Environment.NewLine + Environment.NewLine, scan.Issues.Select(x => $"{x.Code}: {x.Path}\n{x.Detail}"));
-        SetStatus("ScanComplete", Rows.Count, Rows.Count); RefreshPlan();
+        WorkspaceChanged?.Invoke();
+        SetStatus("ScanComplete", Rows.Count, Rows.Count); RefreshPlan(); RefreshStartup();
     }
     private async Task ApplyAsync(CancellationToken ct)
     {
@@ -224,6 +263,8 @@ public sealed class MainViewModel : Observable, IDisposable
                 Status = latest?.QuickXorHash is { Length: > 0 } ? DiffStatus.Match : DiffStatus.Unverified
             }, L, () => (OverwriteMode)ModeIndex, RefreshPlan);
         }
+        // Installed files now equal SharePoint, so they are no longer "locally changed".
+        locallyChanged = locallyChanged.Where(k => !success.Contains(k)).ToHashSet(); FilesView.Refresh();
         modeIndex = 0; Raise(nameof(ModeIndex));
         var failed = result.Results.Where(x => x.Status == "Error").ToArray();
         if (failed.Length > 0)
@@ -233,6 +274,7 @@ public sealed class MainViewModel : Observable, IDisposable
             ErrorDetail = Directory.Exists(errors) ? string.Join(Environment.NewLine, Directory.GetFiles(errors, "*.json").Select(File.ReadAllText)) : Error;
         }
         SetStatus(result.Cancelled ? "Cancelled" : "ApplyComplete", success.Count, result.Results.Count);
+        WorkspaceChanged?.Invoke();
         await File.WriteAllTextAsync(Path.Combine(reportDirectory, "summary.txt"), L.Format("ReportSummary", success.Count, failed.Length, result.Results.Sum(x => x.BytesDownloaded), reportDirectory), CancellationToken.None);
         RefreshPlan();
     }
@@ -267,9 +309,67 @@ public sealed class MainViewModel : Observable, IDisposable
     }
     private void SetStatus(string code, int done = 0, int count = 0) { statusCode = code; completed = done; total = count; Raise(nameof(StatusText)); Raise(nameof(ProgressPercent)); Raise(nameof(Indeterminate)); }
     private void RefreshPlan() { if (bulkSelecting) return; Raise(nameof(Estimate)); Raise(nameof(Summary)); Raise(nameof(SummaryStats)); Raise(nameof(Details)); Raise(nameof(SelectedPath)); Raise(nameof(MetadataItems)); UpdateCommands(); }
-    private void RefreshLanguage() { foreach (var r in Rows) r.RefreshText(); FilesView.Refresh(); Raise(nameof(StatusText)); RefreshPlan(); }
+    private void RefreshLanguage() { foreach (var r in Rows) r.RefreshText(); FilesView.Refresh(); Raise(nameof(StatusText)); RefreshPlan(); RefreshStartup(); }
+    // ---- Check at Windows sign-in -------------------------------------------------------------
+    public RelayCommand UseThisCopyCommand { get; }
+    /// <summary>The logon check needs a completed Compare for this site and folder, real settings, and a sign-in that may be kept on disk.</summary>
+    public bool CanStartWithWindows => !Demo && !SettingsStore.IsRedirected && HasSelection && !PersistenceBlocked && ProfileIndex >= 0 && ProfileIndex < Profiles.Count;
+    /// <summary>Turning the option off is always possible; turning it on needs <see cref="CanStartWithWindows"/>.</summary>
+    public bool CanToggleStartWithWindows => !Demo && !SettingsStore.IsRedirected && (settings.StartWithWindows || CanStartWithWindows);
+    /// <summary>The shared session of the selected profile (the same one the tray agent uses) has seen a token that is not read-only.</summary>
+    private bool PersistenceBlocked
+    {
+        get
+        {
+            if (ProfileIndex < 0 || ProfileIndex >= Profiles.Count) return false;
+            try { return BrowserAuthentication.Shared(Profiles[ProfileIndex], SettingsStore.TokenCacheDirectory).PersistenceBlocked; }
+            catch (OperationException) { return false; } // an incomplete profile is reported by Connect
+        }
+    }
+    public bool StartWithWindows
+    {
+        get => settings.StartWithWindows;
+        set
+        {
+            if (value == settings.StartWithWindows || (value && !CanStartWithWindows)) { RefreshStartup(); return; }
+            try { StartupRegistration.Apply(value); settings.StartWithWindows = value; Persist(); }
+            catch (OperationException ex) { SetError(ex); }
+            RefreshStartup();
+        }
+    }
+    public string StartupHint => Demo ? L["StartupDemo"] : SettingsStore.IsRedirected ? L["StartupRedirected"] : PersistenceBlocked ? L["ErrorWriteScopedApp"]
+        : !HasSelection ? L["StartupNeedsCompare"] : L["StartupHint"];
+    public string StartupWarning
+    {
+        get
+        {
+            if (Demo || SettingsStore.IsRedirected || !settings.StartWithWindows) return "";
+            StartupRegistration.State state;
+            try { state = StartupRegistration.Read(); } catch (OperationException ex) { return L["Error" + ex.Code]; }
+            if (!state.IsCurrent) return state.TargetExists && StartupCommand.TryParse(state.Value, out string other, out _) ? L.Format("StartupPathMismatch", other) : L["StartupMissingTarget"];
+            if (state.DisabledByUser) return L["StartupDisabledInTaskManager"];
+            return StartupCommand.IsTemporaryLocation(StartupRegistration.Exe) ? L["StartupTemporaryLocation"] : "";
+        }
+    }
+    private bool HasSelection
+    {
+        get
+        {
+            try { return File.Exists(Path.Combine(Workspace.DataRootFor(SiteUrl, LocalRoot), LibrarySelectionStore.FileName)); }
+            catch (Exception ex) when (ex is OperationException or ArgumentException or IOException) { return false; }
+        }
+    }
+    private void UseThisCopy()
+    {
+        try { StartupRegistration.Apply(true); } catch (OperationException ex) { SetError(ex); }
+        RefreshStartup();
+    }
+    private void RefreshStartup()
+    {
+        Raise(nameof(StartWithWindows)); Raise(nameof(CanStartWithWindows)); Raise(nameof(CanToggleStartWithWindows)); Raise(nameof(StartupHint)); Raise(nameof(StartupWarning)); UseThisCopyCommand?.Update();
+    }
     private void SelectVisible(bool selected) { bulkSelecting = true; try { foreach (FileRow row in FilesView.Cast<FileRow>().Where(x => x.CanSelect)) row.Selected = selected; } finally { bulkSelecting = false; RefreshPlan(); } }
-    private void UpdateCommands() { ConnectCommand?.Update(); ScanCommand?.Update(); ApplyCommand?.Update(); CancelCommand?.Update(); BrowseCommand?.Update(); AddProfileCommand?.Update(); SaveProfileCommand?.Update(); SelectVisibleCommand?.Update(); ClearVisibleCommand?.Update(); OpenReportsCommand?.Update(); }
+    private void UpdateCommands() { UseThisCopyCommand?.Update(); ConnectCommand?.Update(); ForgetSignInCommand?.Update(); ScanCommand?.Update(); ApplyCommand?.Update(); CancelCommand?.Update(); BrowseCommand?.Update(); AddProfileCommand?.Update(); SaveProfileCommand?.Update(); SelectVisibleCommand?.Update(); ClearVisibleCommand?.Update(); OpenReportsCommand?.Update(); }
     private async void Persist()
     {
         if (Demo) return;
@@ -279,21 +379,58 @@ public sealed class MainViewModel : Observable, IDisposable
     private void OpenReports() { if (Directory.Exists(reportDirectory)) Process.Start(new ProcessStartInfo(reportDirectory) { UseShellExecute = true }); }
     public void LoadDemo()
     {
-        siteUrl = "https://contoso.sharepoint.com/sites/Engineering"; localRoot = @"D:\SharePointMirror";
+        siteUrl = DemoData.Site; localRoot = DemoData.Root;
         Profiles.Clear(); Profiles.Add(new("Contoso • demo", "contoso.onmicrosoft.com", "00000000-0000-0000-0000-000000000000")); profileIndex = 0; LoadProfileFields();
-        Libraries.Add(new(new("demo", "demo", "Engineering", "/sites/Engineering/Shared Documents", "Engineering", 10000)));
-        var meta = new MetadataSnapshot(JsonSerializer.SerializeToElement(new { DocumentNumber = "DOC-2026-0042", Revision = "B", Discipline = "Civil" }), JsonFiles.Empty, JsonFiles.EmptyArray, true);
-        for (int i = 0; i < 10000; i++)
-        {
-            string p = $"Engineering/{(i % 3 == 0 ? "Thiết kế / Design" : "Tài liệu / Documents")}/Review_{i:00000}.pdf";
-            var status = (i % 10) switch { 0 => DiffStatus.MissingLocal, 1 => DiffStatus.DifferentHash, 2 => DiffStatus.LocalOnly, 3 => DiffStatus.Unverified, _ => DiffStatus.Match };
-            var h = new FileHashes(42000 + i * 10, "QYqzIkdUfXTy0qQy5geE9Qe54cQ=", new string('A', 64));
-            var r = new RemoteFile(siteUrl, "demo", "demo", i.ToString(), i.ToString(), p, Path.GetFileName(p), h.Size, h.QuickXorHash, "demo", DateTimeOffset.Now, DateTimeOffset.Now, "", JsonFiles.Empty, meta);
-            Rows.Add(new(new() { RelativePath = p, Status = status, Remote = status == DiffStatus.LocalOnly ? null : r, Local = status == DiffStatus.MissingLocal ? null : new(p, p, h, DateTime.UtcNow) }, L, () => (OverwriteMode)ModeIndex, RefreshPlan));
-        }
+        Libraries.Add(new(DemoData.Library));
+        foreach (var entry in DemoData.Scan().Entries) Rows.Add(new(entry, L, () => (OverwriteMode)ModeIndex, RefreshPlan));
         ConnectionExpanded = false; SetStatus("DemoMode"); RefreshPlan();
+    }
+    /// <summary>Shows a scan made by the logon check ("Details" on the card), in Keep-local mode so nothing is replaced by accident.</summary>
+    public void LoadAgentScan(CheckOutcome outcome, SharePointReader? agentReader)
+    {
+        siteUrl = outcome.Scan.SiteUrl; localRoot = outcome.Scan.LocalRoot; Raise(nameof(SiteUrl)); Raise(nameof(LocalRoot));
+        if (agentReader != null) { reader?.Dispose(); reader = agentReader; }
+        Libraries.Clear();
+        foreach (var library in outcome.Libraries) { var row = new LibraryRow(library); row.PropertyChanged += (_, _) => { scan = null; Rows.Clear(); RefreshPlan(); }; Libraries.Add(row); }
+        scan = outcome.Scan; locallyChanged = outcome.LocallyChangedKeys;
+        Rows.Clear(); foreach (var e in scan.Entries) Rows.Add(new(e, L, () => (OverwriteMode)ModeIndex, RefreshPlan));
+        connected = true; ConnectionExpanded = false; modeIndex = 0; Raise(nameof(ModeIndex));
+        if (!Demo) reportDirectory = Workspace.DataRootFor(scan.SiteUrl, scan.LocalRoot);
+        SetStatus("ScanComplete", Rows.Count, Rows.Count); RefreshPlan(); RefreshStartup();
     }
     public void Dispose() { cancellation?.Cancel(); reader?.Dispose(); }
 }
 public sealed record SummaryStat(string Label, int Value, string Color);
 public sealed record MetadataDisplay(string Label, string Value);
+/// <summary>Synthetic data shared by --demo, the UI smoke and the agent smoke (no network, no real paths).</summary>
+internal static class DemoData
+{
+    public const string Site = "https://contoso.sharepoint.com/sites/Engineering", Root = @"D:\SharePointMirror";
+    public static LibraryInfo Library => new("demo", "demo", "Engineering", "/sites/Engineering/Shared Documents", "Engineering", 10000);
+    private static readonly string LocalSha = new('A', 64);
+    public static ScanResult Scan()
+    {
+        var meta = new MetadataSnapshot(JsonSerializer.SerializeToElement(new { DocumentNumber = "DOC-2026-0042", Revision = "B", Discipline = "Civil" }), JsonFiles.Empty, JsonFiles.EmptyArray, true);
+        var entries = new List<DiffEntry>();
+        for (int i = 0; i < 10000; i++)
+        {
+            string p = $"Engineering/{(i % 3 == 0 ? "Thiết kế / Design" : "Tài liệu / Documents")}/Review_{i:00000}.pdf";
+            var status = (i % 10) switch { 0 => DiffStatus.MissingLocal, 1 => DiffStatus.DifferentHash, 2 => DiffStatus.LocalOnly, 3 => DiffStatus.Unverified, _ => DiffStatus.Match };
+            var h = new FileHashes(42000 + i * 10, "QYqzIkdUfXTy0qQy5geE9Qe54cQ=", LocalSha);
+            var r = new RemoteFile(Site, "demo", "demo", i.ToString(), i.ToString(), p, Path.GetFileName(p), h.Size, h.QuickXorHash, "demo", DateTimeOffset.Now, DateTimeOffset.Now, "", JsonFiles.Empty, meta);
+            entries.Add(new() { RelativePath = p, Status = status, Remote = status == DiffStatus.LocalOnly ? null : r, Local = status == DiffStatus.MissingLocal ? null : new(p, p, h, DateTime.UtcNow) });
+        }
+        return new(Site, Root, entries, ["Engineering"], [], DateTimeOffset.Now, [Library]);
+    }
+    /// <summary>Half of the differences were installed by an earlier sync (pristine); the other half have no record (unknown).</summary>
+    public static IReadOnlyDictionary<string, InstalledRecord> Manifest(ScanResult scan) => scan.Entries
+        .Where(e => e.Status == DiffStatus.DifferentHash && int.Parse(e.Remote!.ItemId) % 20 == 1)
+        .ToDictionary(e => SafePaths.Key(e.RelativePath), e => new InstalledRecord(e.RelativePath, LocalSha, "old", "demo", DateTimeOffset.Now, e.Remote!, "Downloaded"));
+    public static CheckOutcome Outcome()
+    {
+        var scan = Scan(); var manifest = Manifest(scan);
+        var changed = DiffService.Classify(scan.Entries, manifest).Where(p => p.Value != Provenance.Pristine).Select(p => p.Key).ToHashSet();
+        return new(scan, [Library], [], DiffService.Summarize(scan, manifest, 0, 0, false), changed);
+    }
+}
+

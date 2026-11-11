@@ -112,7 +112,7 @@
     <value>Báo cáo</value>
   </data>
   <data name="BackupNotice" xml:space="preserve">
-    <value>Tệp ghi đè được sao lưu trước. Tệp chỉ có ở local luôn được để nguyên.</value>
+    <value>Tệp ghi đè được sao lưu trước; mỗi tệp giữ 3 phiên bản SharePoint gần nhất, bản sao lưu chứa chỉnh sửa local được giữ vĩnh viễn. Tệp chỉ có ở local luôn được để nguyên.</value>
   </data>
   <data name="Summary" xml:space="preserve">
     <value>{0:N0} tệp  •  Khớp: {1:N0}  •  Thiếu: {2:N0}  •  Khác: {3:N0}  •  Chỉ local: {4:N0}  •  Cần xem: {5:N0}</value>
@@ -323,4 +323,81 @@ Tệp chỉ local: giữ nguyên.</value>
   <data name="StatLocal" xml:space="preserve"><value>Chỉ local</value></data>
   <data name="StatReview" xml:space="preserve"><value>Cần kiểm tra</value></data>
   <data name="HashDetails" xml:space="preserve"><value>Hash &amp; bản ghi gốc</value></data>
+  <data name="ErrorWorkspaceBusy" xml:space="preserve"><value>Một lần so sánh hoặc đồng bộ khác đang dùng thư mục này. Chờ nó xong rồi thử lại.</value></data>
+  <data name="ErrorStaleInstallTemp" xml:space="preserve"><value>Tệp tạm còn sót từ một lần đồng bộ bị ngắt. Tệp này không được so sánh hay tự xoá; hãy kiểm tra rồi tự xoá.</value></data>
+  <data name="ErrorNoLibrariesSelected" xml:space="preserve"><value>Chưa chọn thư viện nào cho site này. Mở cửa sổ chính, tích thư viện cần đối chiếu rồi bấm So sánh.</value></data>
+  <data name="ErrorAgentNotReady" xml:space="preserve"><value>Site và thư mục này chưa được so sánh lần nào. Hãy bấm So sánh một lần trong cửa sổ chính.</value></data>
+  <data name="ErrorRequestTimeout" xml:space="preserve"><value>SharePoint không phản hồi kịp. Mạng có thể đang chậm; thử lại sau.</value></data>
+  <data name="ErrorServiceUnavailable" xml:space="preserve"><value>SharePoint đang bận hoặc tạm thời không truy cập được. Thử lại sau.</value></data>
+  <data name="ErrorSignInRequired" xml:space="preserve"><value>Cần đăng nhập Microsoft. Bấm Đăng nhập; trình duyệt chỉ mở khi bạn bấm.</value></data>
+  <data name="ErrorTokenCacheUnavailable" xml:space="preserve"><value>Không đọc hoặc ghi được phiên đăng nhập đã lưu. Đăng nhập lại; nếu vẫn lỗi, dùng Quên đăng nhập.</value></data>
+  <data name="ErrorAuthNetworkFailed" xml:space="preserve"><value>Không kết nối được máy chủ đăng nhập Microsoft. Kiểm tra mạng rồi thử lại.</value></data>
+  <data name="ErrorWriteScopedApp" xml:space="preserve"><value>App Entra này không chỉ có quyền đọc, nên phiên đăng nhập không được lưu và không dùng được kiểm tra khi đăng nhập Windows. Hãy dùng app chỉ đọc (Sites.Read.All, AllSites.Read).</value></data>
+  <data name="ErrorDownloadStalled" xml:space="preserve"><value>Lượt tải ngừng nhận dữ liệu. Phần đã tải được giữ lại và sẽ tải tiếp lần sau.</value></data>
+  <data name="ErrorDownloadInterrupted" xml:space="preserve"><value>Kết nối tải bị ngắt. Phần đã tải được giữ lại và sẽ tải tiếp lần sau.</value></data>
+  <data name="ErrorStartupRegistrationFailed" xml:space="preserve"><value>Không thay đổi được mục khởi động cùng Windows.</value></data>
+  <data name="FilterLocallyChanged" xml:space="preserve"><value>Đã sửa ở local</value></data>
+  <data name="ForgetSignIn" xml:space="preserve"><value>Quên đăng nhập</value></data>
+  <data name="ForgetSignInHint" xml:space="preserve"><value>Xoá phiên đăng nhập đã mã hoá lưu trên máy này cho hồ sơ đang chọn.</value></data>
+  <data name="SignInForgotten" xml:space="preserve"><value>Đã xoá phiên đăng nhập lưu trên máy này.</value></data>
+  <data name="TrayOpen" xml:space="preserve"><value>Mở SharePoint Diff</value></data>
+  <data name="TrayCheckNow" xml:space="preserve"><value>Kiểm tra ngay</value></data>
+  <data name="TraySignIn" xml:space="preserve"><value>Đăng nhập…</value></data>
+  <data name="TrayExit" xml:space="preserve"><value>Thoát</value></data>
+  <data name="TrayWaiting" xml:space="preserve"><value>Chờ kiểm tra sau khi đăng nhập</value></data>
+  <data name="TrayCheckingStart" xml:space="preserve"><value>Đang kiểm tra SharePoint…</value></data>
+  <data name="TrayChecking" xml:space="preserve"><value>Đang so sánh {0:N0}/{1:N0} tệp</value></data>
+  <data name="TrayUpToDate" xml:space="preserve"><value>Đã khớp SharePoint ({0:HH:mm})</value></data>
+  <data name="TrayReviewOnly" xml:space="preserve"><value>Đã khớp; {0:N0} mục cần xem lại</value></data>
+  <data name="TrayPending" xml:space="preserve"><value>{0:N0} tệp mới, {1:N0} cập nhật: bấm để xem</value></data>
+  <data name="TraySyncing" xml:space="preserve"><value>Đang đồng bộ…</value></data>
+  <data name="TraySyncProgress" xml:space="preserve"><value>Đang đồng bộ {0:N0}/{1:N0}</value></data>
+  <data name="TrayOffline" xml:space="preserve"><value>Mất mạng; bấm Kiểm tra ngay sau</value></data>
+  <data name="TraySignInNeeded" xml:space="preserve"><value>Cần đăng nhập: bấm vào biểu tượng</value></data>
+  <data name="TrayProblem" xml:space="preserve"><value>Kiểm tra lỗi: bấm vào biểu tượng</value></data>
+  <data name="TrayIdle" xml:space="preserve"><value>Đã dừng</value></data>
+  <data name="BalloonSignInTitle" xml:space="preserve"><value>Cần đăng nhập Microsoft</value></data>
+  <data name="BalloonSignInText" xml:space="preserve"><value>SharePoint Diff chưa kiểm tra được thay đổi. Bấm để đăng nhập; trình duyệt chỉ mở khi bạn bấm.</value></data>
+  <data name="BalloonDoneTitle" xml:space="preserve"><value>SharePoint Diff đã đồng bộ xong</value></data>
+  <data name="BalloonDone" xml:space="preserve"><value>Đã cài và xác minh {0:N0} tệp, {1:N0} lỗi. Bấm để mở báo cáo.</value></data>
+  <data name="BalloonCancelled" xml:space="preserve"><value>Đã dừng đồng bộ. Tệp đã xong được giữ; phần còn lại tải tiếp lần sau.</value></data>
+  <data name="BalloonStoppedForSignIn" xml:space="preserve"><value>Đồng bộ dừng vì phiên đăng nhập hết hạn. Bấm để đăng nhập rồi đồng bộ lại.</value></data>
+  <data name="CardTitle" xml:space="preserve"><value>Có thay đổi trên SharePoint</value></data>
+  <data name="CardSite" xml:space="preserve"><value>Site: {0}</value></data>
+  <data name="CardFolder" xml:space="preserve"><value>Thư mục: {0}</value></data>
+  <data name="CardScannedAt" xml:space="preserve"><value>Kiểm tra lúc {0:HH:mm}</value></data>
+  <data name="CardNew" xml:space="preserve"><value>Tệp mới: {0:N0} ({1})</value></data>
+  <data name="CardUpdates" xml:space="preserve"><value>Tệp được cập nhật: {0:N0} ({1})</value></data>
+  <data name="CardLocallyChanged" xml:space="preserve"><value>{0:N0} tệp khác bản đồng bộ lần trước ({1:N0} sửa ở cả hai phía, {2:N0} chỉ sửa ở máy này, {3:N0} chưa từng đồng bộ).</value></data>
+  <data name="CardWarning" xml:space="preserve"><value>Đồng bộ cũng thay các tệp này, sau khi sao lưu và kiểm tra.</value></data>
+  <data name="CardMoreFiles" xml:space="preserve"><value>…và {0:N0} tệp khác</value></data>
+  <data name="CardNoHash" xml:space="preserve"><value>{0:N0} tệp không có hash SharePoint, chỉ so được theo dung lượng.</value></data>
+  <data name="CardReview" xml:space="preserve"><value>{0:N0} mục cần xem trong cửa sổ chính và không được đồng bộ.</value></data>
+  <data name="CardNewLibraries" xml:space="preserve"><value>{0:N0} thư viện mới chưa được kiểm tra cho tới khi bạn So sánh trong cửa sổ chính.</value></data>
+  <data name="CardFailedLibraries" xml:space="preserve"><value>{0:N0} thư viện không đọc được; tệp của chúng không được đồng bộ.</value></data>
+  <data name="CardFirstSync" xml:space="preserve"><value>Lần đồng bộ đầu của thư mục này: chưa có bản đồng bộ trước để đối chiếu, nên bản sao lưu của tệp bị thay được giữ vĩnh viễn.</value></data>
+  <data name="CardEstimate" xml:space="preserve"><value>Tải khoảng {0}; sao lưu {1}; tái dùng {2:N0} tệp có sẵn.</value></data>
+  <data name="CardNothingWritten" xml:space="preserve"><value>Chưa ghi gì vào thư mục.</value></data>
+  <data name="CardSync" xml:space="preserve"><value>Đồng bộ</value></data>
+  <data name="CardDetails" xml:space="preserve"><value>Chi tiết</value></data>
+  <data name="CardLater" xml:space="preserve"><value>Để sau</value></data>
+  <data name="CardHide" xml:space="preserve"><value>Ẩn</value></data>
+  <data name="CardStop" xml:space="preserve"><value>Dừng</value></data>
+  <data name="CardSignIn" xml:space="preserve"><value>Đăng nhập</value></data>
+  <data name="CardRetry" xml:space="preserve"><value>Thử lại</value></data>
+  <data name="CardOpen" xml:space="preserve"><value>Mở</value></data>
+  <data name="CardClose" xml:space="preserve"><value>Đóng</value></data>
+  <data name="CardSignInText" xml:space="preserve"><value>Phiên đăng nhập Microsoft đã lưu không còn hoặc đã hết hạn, nên SharePoint Diff không kiểm tra được thay đổi. Bấm Đăng nhập để mở trình duyệt.</value></data>
+  <data name="CardProblemTitle" xml:space="preserve"><value>Không kiểm tra được SharePoint</value></data>
+  <data name="StartWithWindows" xml:space="preserve"><value>Kiểm tra thay đổi khi đăng nhập Windows</value></data>
+  <data name="StartupHint" xml:space="preserve"><value>Có hiệu lực từ lần đăng nhập Windows sau. Biểu tượng ở khay sẽ hỏi trước khi tải bất cứ thứ gì.</value></data>
+  <data name="StartupNeedsCompare" xml:space="preserve"><value>Bấm So sánh một lần cho site và thư mục này để bật tuỳ chọn.</value></data>
+  <data name="StartupRedirected" xml:space="preserve"><value>Không dùng được khi SPDIFF_SETTINGS_PATH trỏ tới cấu hình khác.</value></data>
+  <data name="StartupDemo" xml:space="preserve"><value>Không dùng được ở chế độ demo.</value></data>
+  <data name="StartupPathMismatch" xml:space="preserve"><value>Mục khởi động đang trỏ tới bản khác: {0}</value></data>
+  <data name="StartupMissingTarget" xml:space="preserve"><value>Mục khởi động trỏ tới chương trình không còn tồn tại.</value></data>
+  <data name="StartupDisabledInTaskManager" xml:space="preserve"><value>Mục khởi động đang bị tắt trong Task Manager &gt; Startup apps.</value></data>
+  <data name="StartupTemporaryLocation" xml:space="preserve"><value>Bản này chạy từ thư mục build hoặc tạm; hãy chuyển sang thư mục cố định trước.</value></data>
+  <data name="UseThisCopy" xml:space="preserve"><value>Dùng bản này</value></data>
+  <data name="TraySyncIncomplete" xml:space="preserve"><value>Đồng bộ chưa xong: bấm Kiểm tra ngay</value></data>
 </root>

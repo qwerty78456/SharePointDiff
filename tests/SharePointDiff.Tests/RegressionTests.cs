@@ -99,4 +99,82 @@ public sealed class RegressionTests
         Assert.Equal("DiskFull", ex.Code); Assert.Equal(0, remote.Downloads);
         Assert.Equal(new byte[] { 1 }, await File.ReadAllBytesAsync(local.FullPath));
     }
+    [Fact]
+    public void SecondLockFailsWithWorkspaceBusyAndWorksAfterDispose()
+    {
+        using var f = new Fixture(); var workspace = new Workspace(Fixture.Site, f.Root);
+        var first = WorkspaceLock.Acquire(workspace);
+        Assert.Equal("WorkspaceBusy", Assert.Throws<OperationException>(() => WorkspaceLock.Acquire(workspace)).Code);
+        first.Dispose();
+        using var again = WorkspaceLock.Acquire(workspace);
+    }
+    [Fact]
+    public async Task LockedWorkspaceRejectsScanAndApplyWithoutTouchingAnything()
+    {
+        using var f = new Fixture(); var local = await f.LocalAsync("Docs/a", [1]); var file = Fixture.Remote("Docs/a", [2]); var remote = new FakeRemote(); remote.Add(file, [2]);
+        var workspace = new Workspace(Fixture.Site, f.Root);
+        using (WorkspaceLock.Acquire(workspace))
+        {
+            var scan = await Assert.ThrowsAsync<OperationException>(() => new DiffService(remote).ScanAsync(Fixture.Site, f.Root, [Fixture.Library], null, default));
+            Assert.Equal("WorkspaceBusy", scan.Code); Assert.Equal(0, remote.InventoryCalls);
+            var entry = new DiffEntry { RelativePath = file.RelativePath, Status = DiffStatus.DifferentHash, Local = local, Remote = file };
+            var apply = await Assert.ThrowsAsync<OperationException>(() => new SyncEngine(remote).ApplyAsync(Fixture.Scan(f.Root, entry), Fixture.Plan(new WorkItem(entry, true)), null, default));
+            Assert.Equal("WorkspaceBusy", apply.Code);
+        }
+        Assert.False(Directory.Exists(Path.Combine(workspace.DataRoot, "runs"))); Assert.False(File.Exists(Path.Combine(workspace.DataRoot, "installed-manifest.json")));
+        Assert.Equal(0, remote.Downloads); Assert.Equal(new byte[] { 1 }, await File.ReadAllBytesAsync(local.FullPath));
+    }
+    [Fact]
+    public async Task TwoSitesOnOneMirrorShareTheLock()
+    {
+        using var f = new Fixture(); var other = new Workspace("https://contoso.sharepoint.com/sites/other", f.Root);
+        Assert.NotEqual(new Workspace(Fixture.Site, f.Root).DataRoot, other.DataRoot);
+        using var held = WorkspaceLock.Acquire(other);
+        var ex = await Assert.ThrowsAsync<OperationException>(() => new DiffService(new FakeRemote()).ScanAsync(Fixture.Site, f.Root, [Fixture.Library], null, default));
+        Assert.Equal("WorkspaceBusy", ex.Code);
+    }
+    [Fact]
+    public async Task LeftoverLockFileDoesNotBlockAndLockReleasedAfterFault()
+    {
+        using var f = new Fixture(); var workspace = new Workspace(Fixture.Site, f.Root);
+        await File.WriteAllTextAsync(workspace.LockPath, "left behind by a crash");
+        WorkspaceLock.Acquire(workspace).Dispose();
+        var file = Fixture.Remote("Docs/a", [2]); var remote = new FakeRemote { OnDownload = _ => throw new InvalidOperationException("deliberate programming fault") }; remote.Add(file, [2]);
+        var entry = new DiffEntry { RelativePath = file.RelativePath, Status = DiffStatus.MissingLocal, Remote = file };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new SyncEngine(remote).ApplyAsync(Fixture.Scan(f.Root, entry), Fixture.Plan(new WorkItem(entry, false)), null, default));
+        using var again = WorkspaceLock.Acquire(workspace);
+    }
+}
+/// <summary>CommitGate is process-wide, so these run after (not alongside) the parallel test collections.</summary>
+[CollectionDefinition(nameof(CommitGateCollection), DisableParallelization = true)]
+public sealed class CommitGateCollection;
+[Collection(nameof(CommitGateCollection))]
+public sealed class CommitGateTests
+{
+    [Fact]
+    public void WaitIdleBlocksOnlyWhileATransferIsInsideTheGate()
+    {
+        CommitGate.Enter();
+        try { Assert.Equal(1, CommitGate.Active); Assert.False(CommitGate.WaitIdle(TimeSpan.FromMilliseconds(50))); }
+        finally { CommitGate.Exit(); }
+        Assert.True(CommitGate.WaitIdle(TimeSpan.Zero));
+    }
+    [Fact]
+    public async Task CommitGateReturnsToZeroAfterSuccessAndAfterAFaultInsideTheGate()
+    {
+        using var f = new Fixture();
+        var local = await f.LocalAsync("Docs/a", [1]); var file = Fixture.Remote("Docs/a", [2]); var remote = new FakeRemote(); remote.Add(file, [2]);
+        var entry = new DiffEntry { RelativePath = file.RelativePath, Status = DiffStatus.DifferentHash, Local = local, Remote = file };
+        Assert.Equal("Verified", Assert.Single((await new SyncEngine(remote).ApplyAsync(Fixture.Scan(f.Root, entry), Fixture.Plan(new WorkItem(entry, true)), null, default)).Results).Status);
+        Assert.Equal(0, CommitGate.Active);
+        // The third refresh (just before installing) returns an unrepresentable creation time, so setting the
+        // timestamp after File.Move throws a programming fault from inside the gate.
+        var fresh = Fixture.Remote("Docs/b", [3]); remote.Add(fresh, [3]);
+        remote.OnRefresh = r => { if (remote.RefreshCalls == 3 && r.ItemId == fresh.ItemId) remote.Files[fresh.ItemId] = fresh with { Created = DateTimeOffset.MinValue }; };
+        var newEntry = new DiffEntry { RelativePath = fresh.RelativePath, Status = DiffStatus.MissingLocal, Remote = fresh };
+        remote.ResetCounters();
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new SyncEngine(remote).ApplyAsync(Fixture.Scan(f.Root, newEntry), Fixture.Plan(new WorkItem(newEntry, false)), null, default));
+        Assert.True(File.Exists(Path.Combine(f.Root, "Docs", "b")), "the fault must have happened after the commit");
+        Assert.Equal(0, CommitGate.Active); Assert.True(CommitGate.WaitIdle(TimeSpan.Zero));
+    }
 }

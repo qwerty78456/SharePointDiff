@@ -2,24 +2,32 @@ using System.Text.Json;
 
 namespace SharePointDiff.Core;
 
-public sealed record InstalledRecord(string Path, string Sha256, string? SharePointHash, string ETag, DateTimeOffset ObservedAt, RemoteFile Remote);
+/// <param name="Source">Audit only: Downloaded, Reused or Matched. Retention never depends on it.</param>
+public sealed record InstalledRecord(string Path, string Sha256, string? SharePointHash, string ETag, DateTimeOffset ObservedAt, RemoteFile Remote, string? Source = null);
 public static class ManifestStore
 {
     private static readonly SemaphoreSlim Gate = new(1, 1);
+    private static string PathOf(Workspace workspace) => Path.Combine(workspace.DataRoot, "installed-manifest.json");
     public static async Task<InstalledRecord?> ReadAsync(Workspace workspace, string relative, CancellationToken ct)
     {
         await Gate.WaitAsync(ct);
-        try { return JsonFiles.Read<Dictionary<string, InstalledRecord>>(Path.Combine(workspace.DataRoot, "installed-manifest.json"))?.GetValueOrDefault(SafePaths.Key(relative)); }
+        try { return JsonFiles.Read<Dictionary<string, InstalledRecord>>(PathOf(workspace))?.GetValueOrDefault(SafePaths.Key(relative)); }
         finally { Gate.Release(); }
     }
-    public static async Task SaveAsync(Workspace workspace, RemoteFile remote, FileHashes local, CancellationToken ct)
+    public static async Task<IReadOnlyDictionary<string, InstalledRecord>> ReadAllAsync(Workspace workspace, CancellationToken ct)
+    {
+        await Gate.WaitAsync(ct);
+        try { return JsonFiles.Read<Dictionary<string, InstalledRecord>>(PathOf(workspace)) ?? []; }
+        finally { Gate.Release(); }
+    }
+    public static async Task SaveAsync(Workspace workspace, RemoteFile remote, FileHashes local, CancellationToken ct, string? source = null)
     {
         await Gate.WaitAsync(ct);
         try
         {
-            string path = Path.Combine(workspace.DataRoot, "installed-manifest.json");
+            string path = PathOf(workspace);
             var records = JsonFiles.Read<Dictionary<string, InstalledRecord>>(path) ?? [];
-            records[SafePaths.Key(remote.RelativePath)] = new(remote.RelativePath, local.Sha256, remote.QuickXorHash, remote.ETag, DateTimeOffset.Now, remote);
+            records[SafePaths.Key(remote.RelativePath)] = new(remote.RelativePath, local.Sha256, remote.QuickXorHash, remote.ETag, DateTimeOffset.Now, remote, source);
             await JsonFiles.WriteAsync(path, records, ct);
         }
         finally { Gate.Release(); }
@@ -29,9 +37,15 @@ public static class ManifestStore
         await Gate.WaitAsync(ct);
         try
         {
-            string path = Path.Combine(workspace.DataRoot, "installed-manifest.json");
+            string path = PathOf(workspace);
             var records = JsonFiles.Read<Dictionary<string, InstalledRecord>>(path) ?? [];
-            foreach (var e in entries) records[SafePaths.Key(e.RelativePath)] = new(e.RelativePath, e.Local!.Hashes.Sha256, e.Remote!.QuickXorHash, e.Remote.ETag, DateTimeOffset.Now, e.Remote);
+            foreach (var e in entries)
+            {
+                string key = SafePaths.Key(e.RelativePath);
+                // Keep how the bytes arrived while they stay the same; a fresh observation is "Matched".
+                string source = records.TryGetValue(key, out var old) && old.Sha256 == e.Local!.Hashes.Sha256 && old.Source != null ? old.Source : "Matched";
+                records[key] = new(e.RelativePath, e.Local!.Hashes.Sha256, e.Remote!.QuickXorHash, e.Remote.ETag, DateTimeOffset.Now, e.Remote, source);
+            }
             await JsonFiles.WriteAsync(path, records, ct);
         }
         finally { Gate.Release(); }
