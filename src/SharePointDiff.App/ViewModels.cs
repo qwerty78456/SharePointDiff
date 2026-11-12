@@ -69,6 +69,7 @@ public sealed class MainViewModel : Observable, IDisposable
     private int completed, total;
     private FileRow? selectedRow;
     private string error = "";
+    private Func<string>? errorFormatter;
     private string errorDetail = "";
     public MainViewModel(bool demo = false)
     {
@@ -132,7 +133,8 @@ public sealed class MainViewModel : Observable, IDisposable
         new(L["StatTotal"],Rows.Count,"#172C43"),new(L["StatMatch"],Rows.Count(x=>x.Entry.Status==DiffStatus.Match),"#047857"),
         new(L["StatMissing"],Rows.Count(x=>x.Entry.Status==DiffStatus.MissingLocal),"#086A72"),new(L["StatDifferent"],Rows.Count(x=>x.Entry.IsDifference),"#995E13"),
         new(L["StatLocal"],Rows.Count(x=>x.Entry.Status==DiffStatus.LocalOnly),"#52657B"),new(L["StatReview"],Rows.Count(x=>x.Entry.Status is DiffStatus.Error or DiffStatus.Unverified),"#6941C6")];
-    public string Error { get => error; private set => Set(ref error, value); }
+    public string Error { get => errorFormatter?.Invoke() ?? error; private set { errorFormatter = null; Set(ref error, value); Raise(nameof(Error)); } }
+    internal void SetLocalizedError(Func<string> formatter) { errorFormatter = formatter; Raise(nameof(Error)); }
     public string ErrorDetail { get => errorDetail; private set { Set(ref errorDetail, value); CopyErrorCommand?.Update(); } }
     public string StatusText => L.Format(statusCode, completed, total);
     public string ProgressPath { get => progressPath; private set => Set(ref progressPath, value); }
@@ -208,7 +210,14 @@ public sealed class MainViewModel : Observable, IDisposable
         }
         connected = true; ConnectionExpanded = false; SetStatus("Connected", list.Count, list.Count); Persist(); UpdateCommands();
         // A write-capable app registration still works here, but its sign-in is never kept on disk.
-        if (session.PersistenceBlocked) Error = L["ErrorWriteScopedApp"];
+        if (session.PersistenceBlocked)
+        {
+            var permissions = session.PermissionReports;
+            SetLocalizedError(() => PermissionMessages.Format(L, permissions));
+            ErrorDetail = JsonSerializer.Serialize(PermissionMessages.Audit(permissions), JsonFiles.Options);
+            try { ErrorDetail += Environment.NewLine + PermissionMessages.Save(L, permissions); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ErrorDetail += Environment.NewLine + L["LogWriteFailed"] + ": " + ex.Message; }
+        }
         RefreshStartup();
     }
     private async Task ForgetSignInAsync(CancellationToken ct)
@@ -234,7 +243,11 @@ public sealed class MainViewModel : Observable, IDisposable
         Rows.Clear(); foreach (var e in scan.Entries) Rows.Add(new(e, L, () => (OverwriteMode)ModeIndex, RefreshPlan));
         modeIndex = 0; Raise(nameof(ModeIndex));
         reportDirectory = workspace.DataRoot;
-        if (scan.Issues.Count > 0) Error = L.Format("ScanIssues", scan.Issues.Count) + Environment.NewLine + string.Join(Environment.NewLine, scan.Issues.Take(20).Select(x => L["Error" + x.Code] + ": " + x.Path));
+        if (scan.Issues.Count > 0)
+        {
+            var issues = scan.Issues.ToArray();
+            SetLocalizedError(() => L.Format("ScanIssues", issues.Length) + Environment.NewLine + string.Join(Environment.NewLine, issues.Take(20).Select(x => L["Error" + x.Code] + ": " + x.Path)));
+        }
         if (scan.Issues.Count > 0) ErrorDetail = string.Join(Environment.NewLine + Environment.NewLine, scan.Issues.Select(x => $"{x.Code}: {x.Path}\n{x.Detail}"));
         WorkspaceChanged?.Invoke();
         SetStatus("ScanComplete", Rows.Count, Rows.Count); RefreshPlan(); RefreshStartup();
@@ -269,7 +282,7 @@ public sealed class MainViewModel : Observable, IDisposable
         var failed = result.Results.Where(x => x.Status == "Error").ToArray();
         if (failed.Length > 0)
         {
-            Error = string.Join(Environment.NewLine, failed.Take(30).Select(x => L["Error" + (x.Error ?? "TransferFailed")] + ": " + x.Path));
+            SetLocalizedError(() => string.Join(Environment.NewLine, failed.Take(30).Select(x => L["Error" + (x.Error ?? "TransferFailed")] + ": " + x.Path)));
             string errors = Path.Combine(reportDirectory, "errors");
             ErrorDetail = Directory.Exists(errors) ? string.Join(Environment.NewLine, Directory.GetFiles(errors, "*.json").Select(File.ReadAllText)) : Error;
         }
@@ -304,12 +317,12 @@ public sealed class MainViewModel : Observable, IDisposable
         string? log = null;
         try { log = ErrorDetails.Save(ex, action, path); }
         catch (Exception logError) when (logError is IOException or UnauthorizedAccessException) { log = L["LogWriteFailed"] + ": " + logError.Message; }
-        Error = L["Error" + code] + Environment.NewLine + ex.GetBaseException().Message + (path != null ? Environment.NewLine + path : "");
+        SetLocalizedError(() => L["Error" + code] + Environment.NewLine + ex.GetBaseException().Message + (path != null ? Environment.NewLine + path : ""));
         ErrorDetail = ErrorDetails.Format(ex, action, path, log);
     }
     private void SetStatus(string code, int done = 0, int count = 0) { statusCode = code; completed = done; total = count; Raise(nameof(StatusText)); Raise(nameof(ProgressPercent)); Raise(nameof(Indeterminate)); }
     private void RefreshPlan() { if (bulkSelecting) return; Raise(nameof(Estimate)); Raise(nameof(Summary)); Raise(nameof(SummaryStats)); Raise(nameof(Details)); Raise(nameof(SelectedPath)); Raise(nameof(MetadataItems)); UpdateCommands(); }
-    private void RefreshLanguage() { foreach (var r in Rows) r.RefreshText(); FilesView.Refresh(); Raise(nameof(StatusText)); RefreshPlan(); RefreshStartup(); }
+    private void RefreshLanguage() { foreach (var r in Rows) r.RefreshText(); FilesView.Refresh(); Raise(nameof(StatusText)); Raise(nameof(Error)); RefreshPlan(); RefreshStartup(); }
     // ---- Check at Windows sign-in -------------------------------------------------------------
     public RelayCommand UseThisCopyCommand { get; }
     /// <summary>The logon check needs a completed Compare for this site and folder, real settings, and a sign-in that may be kept on disk.</summary>
@@ -337,7 +350,7 @@ public sealed class MainViewModel : Observable, IDisposable
             RefreshStartup();
         }
     }
-    public string StartupHint => Demo ? L["StartupDemo"] : SettingsStore.IsRedirected ? L["StartupRedirected"] : PersistenceBlocked ? L["ErrorWriteScopedApp"]
+    public string StartupHint => Demo ? L["StartupDemo"] : SettingsStore.IsRedirected ? L["StartupRedirected"] : PersistenceBlocked ? PermissionMessages.Format(L, BrowserAuthentication.Shared(Profiles[ProfileIndex], SettingsStore.TokenCacheDirectory).PermissionReports)
         : !HasSelection ? L["StartupNeedsCompare"] : L["StartupHint"];
     public string StartupWarning
     {
@@ -433,4 +446,3 @@ internal static class DemoData
         return new(scan, [Library], [], DiffService.Summarize(scan, manifest, 0, 0, false), changed);
     }
 }
-

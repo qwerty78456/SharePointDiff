@@ -21,6 +21,9 @@ public sealed class BrowserAuthentication : ITokenProvider
     private IAccount? account;
     // Resources whose current token was seen with read-only scopes in this process.
     private readonly HashSet<string> verified = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, TokenPermissionReport> permissions = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Permission names only. Never contains access/refresh tokens, account identifiers or credentials.</summary>
+    public IReadOnlyList<TokenPermissionReport> PermissionReports => permissions.Values.OrderBy(p => p.Resource, StringComparer.OrdinalIgnoreCase).ToArray();
     private static string ResourceKey(string resource) => resource.TrimEnd('/');
     public string? AccountName => account?.Username;
     /// <summary>The encrypted cache file, or null when nothing is persisted.</summary>
@@ -74,7 +77,7 @@ public sealed class BrowserAuthentication : ITokenProvider
         {
             await EnsureCacheAsync();
             foreach (var a in await app.GetAccountsAsync()) await app.RemoveAsync(a);
-            account = null; verified.Clear();
+            account = null; verified.Clear(); permissions.Clear();
             if ((await app.GetAccountsAsync()).Any()) throw new OperationException("TokenCacheUnavailable", CacheFilePath);
             // While persistence is blocked the helper is unregistered, so remove a file a failed delete may have left.
             if (PersistenceBlocked) DeleteCacheFile();
@@ -147,9 +150,11 @@ public sealed class BrowserAuthentication : ITokenProvider
     /// (retried on every later token while it is still there).</summary>
     private string Accept(string resource, AuthenticationResult result)
     {
+        var report = TokenScopes.Inspect(ResourceKey(resource), result.AccessToken);
+        permissions[ResourceKey(resource)] = report;
         if (cache != null && !PersistenceBlocked)
         {
-            if (TokenScopes.IsReadOnly(result.AccessToken)) verified.Add(ResourceKey(resource));
+            if (report.IsReadOnly) verified.Add(ResourceKey(resource));
             else { PersistenceBlocked = true; cache.UnregisterCache(app.UserTokenCache); }
         }
         if (PersistenceBlocked) DeleteCacheFile();
@@ -171,12 +176,24 @@ public sealed class BrowserAuthentication : ITokenProvider
     }
 }
 
+public sealed record TokenPermissionReport(string Resource, bool ScopesReadable, IReadOnlyList<string> GrantedScopes, IReadOnlyList<string> RejectedScopes)
+{
+    public bool IsReadOnly => ScopesReadable && GrantedScopes.Count > 0 && RejectedScopes.Count == 0;
+}
+
 public static class TokenScopes
 {
     /// <summary>Delegated scopes that cannot change anything. Everything else counts as possibly writing, including per-site grants such as
     /// Sites.Selected, whose level the token does not show.</summary>
     private static readonly HashSet<string> ReadOnly = new(StringComparer.OrdinalIgnoreCase)
     { "Sites.Read.All", "AllSites.Read", "Files.Read", "Files.Read.All", "MyFiles.Read", "TermStore.Read.All", "Sites.Search.All", "User.Read", "User.ReadBasic.All", "openid", "profile", "email", "offline_access" };
+    public static IReadOnlyList<string> AllowedScopes { get; } = Array.AsReadOnly(ReadOnly.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray());
+    public static TokenPermissionReport Inspect(string resource, string accessToken)
+    {
+        var scopes = Scopes(accessToken);
+        var granted = (scopes ?? []).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray();
+        return new(resource, scopes is { Count: > 0 }, Array.AsReadOnly(granted), Array.AsReadOnly(granted.Where(s => !ReadOnly.Contains(s)).ToArray()));
+    }
     /// <summary>The delegated <c>scp</c> claim, read without validating the token; null when the token is not a readable JWT with scopes.</summary>
     public static IReadOnlyList<string>? Scopes(string accessToken)
     {

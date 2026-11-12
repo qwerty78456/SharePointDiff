@@ -161,7 +161,7 @@ Estimated network: {3}  •  Backup: {4}</value>
     <value>Reusable source</value>
   </data>
   <data name="Metadata" xml:space="preserve">
-    <value>SharePoint metadata (original values)</value>
+    <value>Original SharePoint metadata</value>
   </data>
   <data name="Ready" xml:space="preserve">
     <value>Ready</value>
@@ -332,7 +332,7 @@ Local-only files: untouched.</value>
   <data name="ErrorSignInRequired" xml:space="preserve"><value>Microsoft sign-in is required. Click Sign in; the browser opens only when you ask.</value></data>
   <data name="ErrorTokenCacheUnavailable" xml:space="preserve"><value>The saved sign-in could not be read or written. Sign in again; if this persists, use Forget sign-in.</value></data>
   <data name="ErrorAuthNetworkFailed" xml:space="preserve"><value>Could not reach Microsoft sign-in. Check the network and try again.</value></data>
-  <data name="ErrorWriteScopedApp" xml:space="preserve"><value>This app registration is not limited to read-only permissions, so the sign-in is not saved and checking at Windows sign-in is unavailable. Use a read-only app (Sites.Read.All, AllSites.Read).</value></data>
+  <data name="ErrorWriteScopedApp" xml:space="preserve"><value>Sign-in is not saved because the app has permissions beyond confirmed read access. See the listed granted and required permissions.</value></data>
   <data name="ErrorDownloadStalled" xml:space="preserve"><value>The download stopped receiving data. The part already downloaded is kept and resumes next time.</value></data>
   <data name="ErrorDownloadInterrupted" xml:space="preserve"><value>The download connection was interrupted. The part already downloaded is kept and resumes next time.</value></data>
   <data name="ErrorStartupRegistrationFailed" xml:space="preserve"><value>Could not change the Windows startup entry.</value></data>
@@ -387,7 +387,7 @@ Local-only files: untouched.</value>
   <data name="CardRetry" xml:space="preserve"><value>Retry</value></data>
   <data name="CardOpen" xml:space="preserve"><value>Open</value></data>
   <data name="CardClose" xml:space="preserve"><value>Close</value></data>
-  <data name="CardSignInText" xml:space="preserve"><value>Your saved Microsoft sign-in is missing or expired, so SharePoint Diff cannot check for changes. Click Sign in to open the browser.</value></data>
+  <data name="CardSignInText" xml:space="preserve"><value>No usable saved sign-in is available. Click Sign in to open Microsoft in your browser.</value></data>
   <data name="CardProblemTitle" xml:space="preserve"><value>Could not check SharePoint</value></data>
   <data name="StartWithWindows" xml:space="preserve"><value>Check for changes when I sign in to Windows</value></data>
   <data name="StartupHint" xml:space="preserve"><value>Takes effect at the next Windows sign-in. A tray icon asks before anything is downloaded.</value></data>
@@ -400,4 +400,16 @@ Local-only files: untouched.</value>
   <data name="StartupTemporaryLocation" xml:space="preserve"><value>This copy runs from a build or temporary folder; move it to a fixed folder first.</value></data>
   <data name="UseThisCopy" xml:space="preserve"><value>Use this copy</value></data>
   <data name="TraySyncIncomplete" xml:space="preserve"><value>Sync incomplete: use Check now</value></data>
+  <data name="PermissionsCurrent" xml:space="preserve"><value>Permissions currently granted to this app:</value></data>
+  <data name="PermissionsNotAvailable" xml:space="preserve"><value>The granted permissions could not be read.</value></data>
+  <data name="PermissionsRequired" xml:space="preserve"><value>For saved sign-in and automatic checks at Windows sign-in, use read permissions:
+• Microsoft Graph: Sites.Read.All.
+• SharePoint: AllSites.Read.
+Basic sign-in scopes may accompany them: openid, profile, email, offline_access and User.Read.</value></data>
+  <data name="PermissionsRemove" xml:space="preserve"><value>Remove these granted permissions to use this feature:</value></data>
+  <data name="PermissionsFullControl" xml:space="preserve"><value>full control; it can add, change and delete data.</value></data>
+  <data name="PermissionsWrite" xml:space="preserve"><value>it can change data.</value></data>
+  <data name="PermissionsUnknown" xml:space="preserve"><value>this permission cannot be confirmed as read-only.</value></data>
+  <data name="PermissionsCannotVerify" xml:space="preserve"><value>The sign-in does not expose readable permissions. Read-only access cannot be confirmed, so sign-in is not saved.</value></data>
+  <data name="PermissionsSessionOnly" xml:space="preserve"><value>You can still click Connect to inspect and download files in this open session. Sign-in is not saved and automatic checks after Windows sign-in are unavailable. The app does not change SharePoint data.</value></data>
 </root>

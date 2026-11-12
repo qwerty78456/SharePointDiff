@@ -41,6 +41,9 @@ internal static class UiSmoke
             await JsonFiles.WriteAsync(Path.Combine(directory, "row-diagnostics.json"), diagnostics);
             var first = vm.Rows.First(x => x.CanSelect); first.Selected = true;
             vm.SelectedRow = first;
+            var permissionReports = new[] { new TokenPermissionReport("https://graph.microsoft.com", true, ["AllSites.FullControl", "Sites.Read.All", "openid", "profile", "email"], ["AllSites.FullControl"]),
+                new TokenPermissionReport("https://contoso.sharepoint.com", true, ["AllSites.FullControl", "Sites.Read.All"], ["AllSites.FullControl"]) };
+            vm.SetLocalizedError(() => PermissionMessages.Format(vm.L, permissionReports));
             foreach (var language in new[] { 0, 1 })
             {
                 vm.LanguageIndex = language;
@@ -48,7 +51,11 @@ internal static class UiSmoke
                 await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 Save(window, Path.Combine(directory, language == 0 ? "vi-wide.png" : "en-wide.png"));
                 if (!first.Selected) throw new InvalidOperationException("Selection lost during language change");
+                if (!vm.Error.StartsWith(vm.L["PermissionsCurrent"]) || !vm.Error.Contains(vm.L["PermissionsRemove"]) || !vm.Error.Contains("AllSites.FullControl") || !vm.Error.Contains("AllSites.Read"))
+                    throw new InvalidOperationException("Permission error did not list granted/required/rejected scopes in the current language");
             }
+            checks["PermissionErrorRelocalizes"] = true;
+            vm.SetLocalizedError(() => "");
             checks["LanguageSelectionPreserved"] = true;
             checks["LanguageLabelHasRoom"] = window.LanguageLabel.ActualWidth >= 76;
             if (window.LanguageLabel.ActualWidth < 76) throw new InvalidOperationException("Language label clipped");

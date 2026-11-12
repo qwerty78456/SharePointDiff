@@ -142,6 +142,7 @@ internal sealed class TrayAgent : IDisposable
     internal Forms.NotifyIcon Icon => icon;
     internal bool Attention => attention;
     internal bool Demo => demo;
+    private IReadOnlyList<TokenPermissionReport>? demoPermissions;
     internal Forms.ToolStripMenuItem SignInItem => signIn;
     internal Forms.ToolStripMenuItem CheckItem => check;
     public TrayAgent(Application app, bool demo)
@@ -247,17 +248,20 @@ internal sealed class TrayAgent : IDisposable
             AgentCheckResult result;
             try { result = await Task.Run(() => runner.RunAsync(site, root, userInitiated, progress, token), token); }
             finally { background?.Dispose(); background = null; }
-            WriteLog(result);
             if (disposed) return;
-            if (session!.PersistenceBlocked) { State = AgentState.NotConfigured; SetIcon(true); SetTooltip(L["TrayProblem"]); ShowProblem("WriteScopedApp"); }
-            else Render(result);
+            if (session!.PersistenceBlocked) { WriteLog(result with { State = AgentState.NotConfigured, Code = "WriteScopedApp" }); State = AgentState.NotConfigured; SetIcon(true); SetTooltip(L["TrayProblem"]); ShowProblem("WriteScopedApp"); }
+            else { WriteLog(result); Render(result); }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { SetTooltip(L["TrayIdle"]); }
         catch (Exception ex) when (ex is OperationException or IOException or UnauthorizedAccessException or HttpRequestException)
         { TrySave(ex, "AgentCheck"); if (disposed) return; State = AgentState.Failed; SetIcon(true); SetTooltip(L["TrayProblem"]); ShowProblem(ex is OperationException op ? op.Code : ex is HttpRequestException ? "HttpError" : "FileIoError"); }
         finally { busy = false; logonRun = false; Relabel(); }
     }
-    internal void RenderForSmoke(AgentCheckResult result) => Render(result);
+    internal void RenderForSmoke(AgentCheckResult result, IReadOnlyList<TokenPermissionReport>? permissions = null)
+    {
+        if (!demo) throw new InvalidOperationException("Synthetic permission reports require demo mode.");
+        demoPermissions = permissions; Render(result);
+    }
     private void Render(AgentCheckResult result)
     {
         if (disposed) return;
@@ -349,7 +353,17 @@ internal sealed class TrayAgent : IDisposable
     private AgentCard EnsureCard() => Card ??= new AgentCard(this);
     private void ShowPrompt(CheckOutcome outcome) { if (!disposed) EnsureCard().ShowPrompt(outcome, demo); }
     private void ShowSignIn() { if (!disposed) EnsureCard().ShowSignIn(); }
-    private void ShowProblem(string code) { if (!disposed) EnsureCard().ShowProblem(code); }
+    internal string ProblemText(string code) => code == "WriteScopedApp" ? PermissionMessages.Format(L, demo ? demoPermissions ?? [] : session?.PermissionReports ?? []) : L["Error" + code];
+    private void ShowProblem(string code)
+    {
+        if (disposed) return;
+        if (code == "WriteScopedApp" && !demo)
+        {
+            try { PermissionMessages.Save(L, session?.PermissionReports ?? []); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { TrySave(ex, "PermissionLog"); }
+        }
+        EnsureCard().ShowProblem(code);
+    }
     internal void CloseCard() { Card?.Close(); Card = null; }
     internal void CardClosed(AgentCard card) { if (ReferenceEquals(card, Card)) Card = null; }
     internal void CardSync() => Fire(SyncAsync);
@@ -428,7 +442,10 @@ internal sealed class TrayAgent : IDisposable
             File.WriteAllText(path, JsonSerializer.Serialize(new
             {
                 result.State, result.Code, result.Path, DurationSeconds = result.Duration.TotalSeconds, NetworkWaitSeconds = result.NetworkWait.TotalSeconds, result.Attempts,
-                HashedFiles = result.Outcome?.Scan.Entries.Count(e => e.Local != null), result.Outcome?.Summary
+                HashedFiles = result.Outcome?.Scan.Entries.Count(e => e.Local != null), result.Outcome?.Summary,
+                GrantedPermissions = session?.PermissionReports,
+                AllowedPermissions = TokenScopes.AllowedScopes,
+                PermissionExplanation = session?.PersistenceBlocked == true ? PermissionMessages.Format(L, session.PermissionReports) : null
             }, JsonFiles.Options));
             // This tool's own check logs, not user data or backups: keep the newest 60.
             foreach (var old in new DirectoryInfo(dir).GetFiles("agent-*.json").OrderByDescending(f => f.Name, StringComparer.Ordinal).Skip(60)) old.Delete();

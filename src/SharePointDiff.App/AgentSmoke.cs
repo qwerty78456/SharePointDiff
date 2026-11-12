@@ -55,6 +55,19 @@ internal static class AgentSmoke
             UiSmoke.Save(agent.Card!, Path.Combine(directory, "card-signin-en.png"));
             agent.RenderForSmoke(new(AgentState.Failed, null, "RequestTimeout", null, TimeSpan.Zero, 1, TimeSpan.Zero)); await IdleAsync(app);
             UiSmoke.Save(agent.Card!, Path.Combine(directory, "card-problem-en.png"));
+            var permissions = new[] { new TokenPermissionReport("https://graph.microsoft.com", true, ["AllSites.FullControl", "Sites.Read.All", "openid", "profile", "email"], ["AllSites.FullControl"]),
+                new TokenPermissionReport("https://contoso.sharepoint.com", true, ["AllSites.FullControl", "Sites.Read.All"], ["AllSites.FullControl"]) };
+            agent.RenderForSmoke(new(AgentState.NotConfigured, null, "WriteScopedApp", null, TimeSpan.Zero, 1, TimeSpan.Zero), permissions);
+            foreach (string culture in new[] { "vi-VN", "en-US" })
+            {
+                agent.L.Switch(culture); await IdleAsync(app);
+                string explanation = agent.ProblemText("WriteScopedApp");
+                Require(explanation.Contains("AllSites.FullControl") && explanation.Contains("AllSites.Read") && explanation.Contains(agent.L["PermissionsRemove"]), "permission names or rejection reason missing");
+                var permissionCard = agent.Card!; var area = SystemParameters.WorkArea;
+                Require(permissionCard.Top >= area.Top && permissionCard.Top + permissionCard.ActualHeight <= area.Bottom + 1, "permission card exceeds the work area");
+                UiSmoke.Save(permissionCard, Path.Combine(directory, "card-permissions-" + culture + ".png"));
+            }
+            checks["PermissionCardNamesScopesAndFits"] = true;
             var window = agent.OpenMain(outcome) ?? throw new InvalidOperationException("Details did not open a window"); await IdleAsync(app);
             var vm = (MainViewModel)window.DataContext;
             checks["DetailsRows"] = vm.Rows.Count; checks["DetailsMode"] = vm.ModeIndex; checks["DetailsPlan"] = vm.CurrentPlan.Items.Count;

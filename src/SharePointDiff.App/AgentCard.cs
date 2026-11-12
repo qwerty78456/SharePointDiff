@@ -24,10 +24,11 @@ internal sealed class AgentCard : Window
     public AgentCard(TrayAgent agent)
     {
         this.agent = agent;
-        Title = "SharePoint Diff"; Width = 480; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
+        Title = "SharePoint Diff"; Width = Math.Min(520, SystemParameters.WorkArea.Width - 32); MaxHeight = SystemParameters.WorkArea.Height - 32; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         Topmost = true; ShowActivated = false; ShowInTaskbar = true; WindowStartupLocation = WindowStartupLocation.Manual;
         FontFamily = new FontFamily("Segoe UI"); FontSize = 13; Background = new SolidColorBrush(Color.FromRgb(245, 247, 250));
-        var root = new StackPanel { Margin = new(20) }; root.Children.Add(body); root.Children.Add(buttons);
+        var root = new DockPanel { Margin = new(20) }; DockPanel.SetDock(buttons, Dock.Bottom); root.Children.Add(buttons);
+        root.Children.Add(new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = Math.Max(180, SystemParameters.WorkArea.Height - 160) });
         Content = new Border { Child = root };
         SizeChanged += (_, _) => PlaceAtCorner();
         Closed += (_, _) => agent.CardClosed(this);
@@ -82,7 +83,7 @@ internal sealed class AgentCard : Window
                 break;
             case Mode.Problem:
                 body.Children.Add(Line(L["CardProblemTitle"], size: 17, weight: FontWeights.SemiBold, top: 0));
-                body.Children.Add(Line(L["Error" + problem], top: 8));
+                body.Children.Add(Line(agent.ProblemText(problem), top: 8));
                 Action("CardClose", Close); Action("CardOpen", () => agent.OpenMain(null)); Action("CardRetry", agent.CardRetry, primary: true, enabled: !demo);
                 break;
         }

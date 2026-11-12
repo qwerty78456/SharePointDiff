@@ -137,6 +137,28 @@ public sealed class AuthenticationTests
     [InlineData("Files.SelectedOperations.Selected", false)]
     public void IsReadOnlyOnlyForKnownReadOnlyScopes(string scp, bool expected) => Assert.Equal(expected, TokenScopes.IsReadOnly(Jwt(new { scp })));
     [Fact]
+    public void PermissionReportNamesGrantedAndRejectedScopesWithoutKeepingTheToken()
+    {
+        string token = Jwt(new { scp = "profile AllSites.FullControl Sites.Read.All AllSites.FullControl" });
+        var report = TokenScopes.Inspect(Graph, token);
+        Assert.True(report.ScopesReadable); Assert.False(report.IsReadOnly);
+        Assert.Equal(Graph, report.Resource);
+        Assert.Equal(new[] { "AllSites.FullControl", "profile", "Sites.Read.All" }, report.GrantedScopes);
+        Assert.Equal(new[] { "AllSites.FullControl" }, report.RejectedScopes);
+        Assert.DoesNotContain(token, JsonSerializer.Serialize(report));
+        Assert.DoesNotContain("AllSites.FullControl", TokenScopes.AllowedScopes);
+    }
+    [Fact]
+    public void MissingScopeInformationIsReportedAsUnknownRatherThanAWritePermission()
+    {
+        foreach (string token in new[] { "opaque-token", Jwt(new { roles = "Sites.Read.All" }), Jwt(new { scp = "" }) })
+        {
+            var report = TokenScopes.Inspect(Graph, token);
+            Assert.False(report.ScopesReadable); Assert.False(report.IsReadOnly);
+            Assert.Empty(report.GrantedScopes); Assert.Empty(report.RejectedScopes);
+        }
+    }
+    [Fact]
     public void UnreadableTokensAreNotReadOnly()
     {
         Assert.False(TokenScopes.IsReadOnly("opaque-token")); Assert.Null(TokenScopes.Scopes("opaque-token"));
@@ -154,6 +176,9 @@ public sealed class AuthenticationTests
         string token = await auth.Background.GetAsync(Graph, default);
         Assert.False(TokenScopes.IsReadOnly(token));
         Assert.True(auth.PersistenceBlocked); Assert.False(File.Exists(auth.CacheFilePath));
+        var report = Assert.Single(auth.PermissionReports);
+        Assert.Equal(Graph, report.Resource); Assert.NotEmpty(report.RejectedScopes);
+        Assert.All(scp.Split(' '), scope => Assert.Contains(scope, report.GrantedScopes));
         Assert.Equal(token, await auth.Background.GetAsync(Graph, default)); // still usable from memory in this process
         Assert.False(File.Exists(auth.CacheFilePath));
         // A file that reappears while blocked (for example after a failed delete) is removed by the next token or by Forget.

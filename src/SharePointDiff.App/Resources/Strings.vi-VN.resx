@@ -19,7 +19,7 @@
     <value>Link site SharePoint</value>
   </data>
   <data name="LocalFolder" xml:space="preserve">
-    <value>Thư mục local</value>
+    <value>Thư mục trên máy</value>
   </data>
   <data name="Browse" xml:space="preserve">
     <value>Chọn thư mục</value>
@@ -79,16 +79,16 @@
     <value>Đường dẫn</value>
   </data>
   <data name="ColumnLocal" xml:space="preserve">
-    <value>Local</value>
+    <value>Máy tính</value>
   </data>
   <data name="ColumnReuse" xml:space="preserve">
-    <value>Tái dùng</value>
+    <value>Dùng lại</value>
   </data>
   <data name="Details" xml:space="preserve">
-    <value>Chi tiết &amp; metadata</value>
+    <value>Thông tin tệp</value>
   </data>
   <data name="DetailsHint" xml:space="preserve">
-    <value>Chọn một tệp để xem hash và metadata SharePoint.</value>
+    <value>Chọn một tệp để xem hash và thông tin trên SharePoint.</value>
   </data>
   <data name="Overwrite" xml:space="preserve">
     <value>Xử lý tệp khác biệt</value>
@@ -112,14 +112,14 @@
     <value>Báo cáo</value>
   </data>
   <data name="BackupNotice" xml:space="preserve">
-    <value>Tệp ghi đè được sao lưu trước; mỗi tệp giữ 3 phiên bản SharePoint gần nhất, bản sao lưu chứa chỉnh sửa local được giữ vĩnh viễn. Tệp chỉ có ở local luôn được để nguyên.</value>
+    <value>Trước khi thay tệp trên máy, ứng dụng luôn sao lưu bản cũ. Mỗi tệp giữ 3 bản SharePoint cũ gần nhất; bản có sửa đổi riêng trên máy không bị tự xoá. Tệp chỉ có trên máy được giữ nguyên.</value>
   </data>
   <data name="Summary" xml:space="preserve">
-    <value>{0:N0} tệp  •  Khớp: {1:N0}  •  Thiếu: {2:N0}  •  Khác: {3:N0}  •  Chỉ local: {4:N0}  •  Cần xem: {5:N0}</value>
+    <value>{0:N0} tệp  •  Khớp: {1:N0}  •  Thiếu: {2:N0}  •  Khác: {3:N0}  •  Chỉ có trên máy: {4:N0}  •  Cần xem: {5:N0}</value>
   </data>
   <data name="Estimate" xml:space="preserve">
-    <value>Tải mới: {0:N0}  •  Ghi đè: {1:N0}  •  Tái dùng: {2:N0}
-Mạng dự kiến: {3}  •  Sao lưu: {4}</value>
+    <value>Tải mới: {0:N0}  •  Ghi đè: {1:N0}  •  Dùng lại: {2:N0}
+Dung lượng tải dự kiến: {3}  •  Sao lưu: {4}</value>
   </data>
   <data name="ChooseFolder" xml:space="preserve">
     <value>Chọn thư mục để đối chiếu với SharePoint</value>
@@ -137,7 +137,7 @@ Mạng dự kiến: {3}  •  Sao lưu: {4}</value>
     <value>Khác hash</value>
   </data>
   <data name="StatusLocalOnly" xml:space="preserve">
-    <value>Chỉ có ở local</value>
+    <value>Chỉ có trên máy</value>
   </data>
   <data name="StatusUnverified" xml:space="preserve">
     <value>Chưa xác minh hash</value>
@@ -146,22 +146,22 @@ Mạng dự kiến: {3}  •  Sao lưu: {4}</value>
     <value>Lỗi / xung đột</value>
   </data>
   <data name="ReuseYes" xml:space="preserve">
-    <value>Có sẵn</value>
+    <value>Có bản sẵn</value>
   </data>
   <data name="LocalHash" xml:space="preserve">
-    <value>QuickXorHash local</value>
+    <value>QuickXorHash trên máy</value>
   </data>
   <data name="RemoteHash" xml:space="preserve">
     <value>QuickXorHash SharePoint</value>
   </data>
   <data name="Sha256" xml:space="preserve">
-    <value>SHA-256 local</value>
+    <value>SHA-256 trên máy</value>
   </data>
   <data name="ReuseSource" xml:space="preserve">
     <value>Bản có thể dùng lại</value>
   </data>
   <data name="Metadata" xml:space="preserve">
-    <value>Metadata SharePoint (nguyên bản)</value>
+    <value>Thông tin gốc trên SharePoint</value>
   </data>
   <data name="Ready" xml:space="preserve">
     <value>Sẵn sàng</value>
@@ -207,7 +207,7 @@ Mạng dự kiến: {3}  •  Sao lưu: {4}</value>
 Lỗi: {1}
 Số byte tải mới: {2}
 Báo cáo và sao lưu: {3}
-Tệp chỉ local: giữ nguyên.</value>
+Tệp chỉ có trên máy: giữ nguyên.</value>
   </data>
   <data name="ErrorInvalidSite" xml:space="preserve">
     <value>Link không hợp lệ. Nhập URL site HTTPS trên SharePoint Online, không phải link chia sẻ tệp.</value>
@@ -216,13 +216,13 @@ Tệp chỉ local: giữ nguyên.</value>
     <value>Chọn hoặc lưu hồ sơ có Tenant ID và Entra Client ID hợp lệ trước khi kết nối.</value>
   </data>
   <data name="ErrorInvalidRoot" xml:space="preserve">
-    <value>Thư mục local chưa tồn tại hoặc không hợp lệ. Chọn một thư mục thông thường.</value>
+    <value>Thư mục trên máy chưa tồn tại hoặc không dùng được. Hãy chọn thư mục khác.</value>
   </data>
   <data name="ErrorAuthenticationFailed" xml:space="preserve">
     <value>Đăng nhập Microsoft chưa thành công. Kiểm tra tài khoản, cấu hình ứng dụng và chính sách tenant.</value>
   </data>
   <data name="ErrorAccessDenied" xml:space="preserve">
-    <value>Không đủ quyền đọc SharePoint hoặc metadata. Kiểm tra quyền đã cấp cho ứng dụng.</value>
+    <value>Không đủ quyền đọc dữ liệu hoặc thông tin tệp trên SharePoint. Hãy kiểm tra quyền của tài khoản và app.</value>
   </data>
   <data name="ErrorRemoteMissing" xml:space="preserve">
     <value>Tệp SharePoint không còn tồn tại.</value>
@@ -255,22 +255,22 @@ Tệp chỉ local: giữ nguyên.</value>
     <value>Không đọc được thư viện; không xem thư viện này là rỗng.</value>
   </data>
   <data name="ErrorLocalReadFailed" xml:space="preserve">
-    <value>Không đọc được tệp hoặc thư mục local.</value>
+    <value>Không đọc được tệp hoặc thư mục trên máy.</value>
   </data>
   <data name="ErrorFileChanged" xml:space="preserve">
-    <value>Bản local đã thay đổi hoặc xuất hiện sau khi quét. Quét lại trước khi thay.</value>
+    <value>Tệp trên máy đã bị sửa hoặc vừa xuất hiện sau khi so sánh. Hãy so sánh lại trước khi thay.</value>
   </data>
   <data name="ErrorMetadataIncomplete" xml:space="preserve">
-    <value>Metadata chưa đầy đủ; tệp chưa được cập nhật.</value>
+    <value>Chưa đọc đủ thông tin của tệp trên SharePoint nên tệp này chưa được cập nhật.</value>
   </data>
   <data name="ErrorUnscannedLibrary" xml:space="preserve">
-    <value>Thư viện chưa quét thành công. Không kết luận các tệp là chỉ local.</value>
+    <value>Chưa đọc xong thư viện này nên chưa thể xác định tệp nào chỉ có trên máy.</value>
   </data>
   <data name="ErrorRemoteChanged" xml:space="preserve">
     <value>Bản SharePoint đã thay đổi trong lúc xử lý. Quét lại trước khi cập nhật.</value>
   </data>
   <data name="ErrorInvalidDownload" xml:space="preserve">
-    <value>Phản hồi tải không hợp lệ; bản local được giữ nguyên.</value>
+    <value>Dữ liệu tải về không đúng định dạng cần dùng. Tệp trên máy được giữ nguyên.</value>
   </data>
   <data name="ErrorHashMismatch" xml:space="preserve">
     <value>Hash hoặc dung lượng không khớp; không dùng bản tải này.</value>
@@ -282,13 +282,13 @@ Tệp chỉ local: giữ nguyên.</value>
     <value>Không đủ dung lượng để tải, sao lưu và cài đặt an toàn.</value>
   </data>
   <data name="ErrorBackupFailed" xml:space="preserve">
-    <value>Sao lưu chưa được xác minh; bản local chưa bị thay.</value>
+    <value>Chưa kiểm tra được bản sao lưu nên chưa thay tệp trên máy.</value>
   </data>
   <data name="ErrorFileIoError" xml:space="preserve">
     <value>Không thể thao tác tệp. Kiểm tra dung lượng, quyền ghi hoặc tệp đang mở.</value>
   </data>
   <data name="ErrorTransferFailed" xml:space="preserve">
-    <value>Chưa cập nhật được tệp. Giữ lại cache để thử lại.</value>
+    <value>Chưa cập nhật được tệp. Phần đã tải được giữ lại để lần sau dùng tiếp.</value>
   </data>
   <data name="ErrorUnexpected" xml:space="preserve">
     <value>Có lỗi ngoài dự kiến. Dừng tác vụ và kiểm tra báo cáo trước khi thử lại.</value>
@@ -320,7 +320,7 @@ Tệp chỉ local: giữ nguyên.</value>
   <data name="StatMatch" xml:space="preserve"><value>Khớp hash</value></data>
   <data name="StatMissing" xml:space="preserve"><value>Thiếu ở máy</value></data>
   <data name="StatDifferent" xml:space="preserve"><value>Khác biệt</value></data>
-  <data name="StatLocal" xml:space="preserve"><value>Chỉ local</value></data>
+  <data name="StatLocal" xml:space="preserve"><value>Chỉ có trên máy</value></data>
   <data name="StatReview" xml:space="preserve"><value>Cần kiểm tra</value></data>
   <data name="HashDetails" xml:space="preserve"><value>Hash &amp; bản ghi gốc</value></data>
   <data name="ErrorWorkspaceBusy" xml:space="preserve"><value>Một lần so sánh hoặc đồng bộ khác đang dùng thư mục này. Chờ nó xong rồi thử lại.</value></data>
@@ -330,16 +330,16 @@ Tệp chỉ local: giữ nguyên.</value>
   <data name="ErrorRequestTimeout" xml:space="preserve"><value>SharePoint không phản hồi kịp. Mạng có thể đang chậm; thử lại sau.</value></data>
   <data name="ErrorServiceUnavailable" xml:space="preserve"><value>SharePoint đang bận hoặc tạm thời không truy cập được. Thử lại sau.</value></data>
   <data name="ErrorSignInRequired" xml:space="preserve"><value>Cần đăng nhập Microsoft. Bấm Đăng nhập; trình duyệt chỉ mở khi bạn bấm.</value></data>
-  <data name="ErrorTokenCacheUnavailable" xml:space="preserve"><value>Không đọc hoặc ghi được phiên đăng nhập đã lưu. Đăng nhập lại; nếu vẫn lỗi, dùng Quên đăng nhập.</value></data>
+  <data name="ErrorTokenCacheUnavailable" xml:space="preserve"><value>Không đọc hoặc lưu được thông tin đăng nhập trên máy. Hãy đăng nhập lại. Nếu vẫn lỗi, bấm Quên đăng nhập rồi thử lại.</value></data>
   <data name="ErrorAuthNetworkFailed" xml:space="preserve"><value>Không kết nối được máy chủ đăng nhập Microsoft. Kiểm tra mạng rồi thử lại.</value></data>
-  <data name="ErrorWriteScopedApp" xml:space="preserve"><value>App Entra này không chỉ có quyền đọc, nên phiên đăng nhập không được lưu và không dùng được kiểm tra khi đăng nhập Windows. Hãy dùng app chỉ đọc (Sites.Read.All, AllSites.Read).</value></data>
+  <data name="ErrorWriteScopedApp" xml:space="preserve"><value>Không lưu đăng nhập vì app có quyền thay đổi dữ liệu hoặc chưa đọc được danh sách quyền. Xem danh sách quyền trong thông báo.</value></data>
   <data name="ErrorDownloadStalled" xml:space="preserve"><value>Lượt tải ngừng nhận dữ liệu. Phần đã tải được giữ lại và sẽ tải tiếp lần sau.</value></data>
   <data name="ErrorDownloadInterrupted" xml:space="preserve"><value>Kết nối tải bị ngắt. Phần đã tải được giữ lại và sẽ tải tiếp lần sau.</value></data>
   <data name="ErrorStartupRegistrationFailed" xml:space="preserve"><value>Không thay đổi được mục khởi động cùng Windows.</value></data>
-  <data name="FilterLocallyChanged" xml:space="preserve"><value>Đã sửa ở local</value></data>
+  <data name="FilterLocallyChanged" xml:space="preserve"><value>Đã sửa trên máy</value></data>
   <data name="ForgetSignIn" xml:space="preserve"><value>Quên đăng nhập</value></data>
-  <data name="ForgetSignInHint" xml:space="preserve"><value>Xoá phiên đăng nhập đã mã hoá lưu trên máy này cho hồ sơ đang chọn.</value></data>
-  <data name="SignInForgotten" xml:space="preserve"><value>Đã xoá phiên đăng nhập lưu trên máy này.</value></data>
+  <data name="ForgetSignInHint" xml:space="preserve"><value>Xoá thông tin đăng nhập Microsoft đã lưu trên máy cho cấu hình đang chọn.</value></data>
+  <data name="SignInForgotten" xml:space="preserve"><value>Đã xoá thông tin đăng nhập lưu trên máy.</value></data>
   <data name="TrayOpen" xml:space="preserve"><value>Mở SharePoint Diff</value></data>
   <data name="TrayCheckNow" xml:space="preserve"><value>Kiểm tra ngay</value></data>
   <data name="TraySignIn" xml:space="preserve"><value>Đăng nhập…</value></data>
@@ -354,14 +354,14 @@ Tệp chỉ local: giữ nguyên.</value>
   <data name="TraySyncProgress" xml:space="preserve"><value>Đang đồng bộ {0:N0}/{1:N0}</value></data>
   <data name="TrayOffline" xml:space="preserve"><value>Mất mạng; bấm Kiểm tra ngay sau</value></data>
   <data name="TraySignInNeeded" xml:space="preserve"><value>Cần đăng nhập: bấm vào biểu tượng</value></data>
-  <data name="TrayProblem" xml:space="preserve"><value>Kiểm tra lỗi: bấm vào biểu tượng</value></data>
+  <data name="TrayProblem" xml:space="preserve"><value>Chưa kiểm tra được. Bấm biểu tượng để xem.</value></data>
   <data name="TrayIdle" xml:space="preserve"><value>Đã dừng</value></data>
   <data name="BalloonSignInTitle" xml:space="preserve"><value>Cần đăng nhập Microsoft</value></data>
   <data name="BalloonSignInText" xml:space="preserve"><value>SharePoint Diff chưa kiểm tra được thay đổi. Bấm để đăng nhập; trình duyệt chỉ mở khi bạn bấm.</value></data>
   <data name="BalloonDoneTitle" xml:space="preserve"><value>SharePoint Diff đã đồng bộ xong</value></data>
   <data name="BalloonDone" xml:space="preserve"><value>Đã cài và xác minh {0:N0} tệp, {1:N0} lỗi. Bấm để mở báo cáo.</value></data>
   <data name="BalloonCancelled" xml:space="preserve"><value>Đã dừng đồng bộ. Tệp đã xong được giữ; phần còn lại tải tiếp lần sau.</value></data>
-  <data name="BalloonStoppedForSignIn" xml:space="preserve"><value>Đồng bộ dừng vì phiên đăng nhập hết hạn. Bấm để đăng nhập rồi đồng bộ lại.</value></data>
+  <data name="BalloonStoppedForSignIn" xml:space="preserve"><value>Cần đăng nhập lại để tiếp tục đồng bộ. Bấm thông báo này để mở trang đăng nhập Microsoft.</value></data>
   <data name="CardTitle" xml:space="preserve"><value>Có thay đổi trên SharePoint</value></data>
   <data name="CardSite" xml:space="preserve"><value>Site: {0}</value></data>
   <data name="CardFolder" xml:space="preserve"><value>Thư mục: {0}</value></data>
@@ -376,7 +376,7 @@ Tệp chỉ local: giữ nguyên.</value>
   <data name="CardNewLibraries" xml:space="preserve"><value>{0:N0} thư viện mới chưa được kiểm tra cho tới khi bạn So sánh trong cửa sổ chính.</value></data>
   <data name="CardFailedLibraries" xml:space="preserve"><value>{0:N0} thư viện không đọc được; tệp của chúng không được đồng bộ.</value></data>
   <data name="CardFirstSync" xml:space="preserve"><value>Lần đồng bộ đầu của thư mục này: chưa có bản đồng bộ trước để đối chiếu, nên bản sao lưu của tệp bị thay được giữ vĩnh viễn.</value></data>
-  <data name="CardEstimate" xml:space="preserve"><value>Tải khoảng {0}; sao lưu {1}; tái dùng {2:N0} tệp có sẵn.</value></data>
+  <data name="CardEstimate" xml:space="preserve"><value>Tải khoảng {0}; sao lưu {1}; dùng lại {2:N0} tệp có sẵn.</value></data>
   <data name="CardNothingWritten" xml:space="preserve"><value>Chưa ghi gì vào thư mục.</value></data>
   <data name="CardSync" xml:space="preserve"><value>Đồng bộ</value></data>
   <data name="CardDetails" xml:space="preserve"><value>Chi tiết</value></data>
@@ -387,12 +387,12 @@ Tệp chỉ local: giữ nguyên.</value>
   <data name="CardRetry" xml:space="preserve"><value>Thử lại</value></data>
   <data name="CardOpen" xml:space="preserve"><value>Mở</value></data>
   <data name="CardClose" xml:space="preserve"><value>Đóng</value></data>
-  <data name="CardSignInText" xml:space="preserve"><value>Phiên đăng nhập Microsoft đã lưu không còn hoặc đã hết hạn, nên SharePoint Diff không kiểm tra được thay đổi. Bấm Đăng nhập để mở trình duyệt.</value></data>
+  <data name="CardSignInText" xml:space="preserve"><value>Chưa có thông tin đăng nhập dùng được. Bấm Đăng nhập để mở trang Microsoft.</value></data>
   <data name="CardProblemTitle" xml:space="preserve"><value>Không kiểm tra được SharePoint</value></data>
   <data name="StartWithWindows" xml:space="preserve"><value>Kiểm tra thay đổi khi đăng nhập Windows</value></data>
-  <data name="StartupHint" xml:space="preserve"><value>Có hiệu lực từ lần đăng nhập Windows sau. Biểu tượng ở khay sẽ hỏi trước khi tải bất cứ thứ gì.</value></data>
+  <data name="StartupHint" xml:space="preserve"><value>Bắt đầu từ lần đăng nhập Windows tiếp theo. Ứng dụng sẽ hỏi trước khi tải tệp về máy.</value></data>
   <data name="StartupNeedsCompare" xml:space="preserve"><value>Bấm So sánh một lần cho site và thư mục này để bật tuỳ chọn.</value></data>
-  <data name="StartupRedirected" xml:space="preserve"><value>Không dùng được khi SPDIFF_SETTINGS_PATH trỏ tới cấu hình khác.</value></data>
+  <data name="StartupRedirected" xml:space="preserve"><value>Đang dùng cấu hình thử riêng nên không bật tự chạy khi mở Windows.</value></data>
   <data name="StartupDemo" xml:space="preserve"><value>Không dùng được ở chế độ demo.</value></data>
   <data name="StartupPathMismatch" xml:space="preserve"><value>Mục khởi động đang trỏ tới bản khác: {0}</value></data>
   <data name="StartupMissingTarget" xml:space="preserve"><value>Mục khởi động trỏ tới chương trình không còn tồn tại.</value></data>
@@ -400,4 +400,16 @@ Tệp chỉ local: giữ nguyên.</value>
   <data name="StartupTemporaryLocation" xml:space="preserve"><value>Bản này chạy từ thư mục build hoặc tạm; hãy chuyển sang thư mục cố định trước.</value></data>
   <data name="UseThisCopy" xml:space="preserve"><value>Dùng bản này</value></data>
   <data name="TraySyncIncomplete" xml:space="preserve"><value>Đồng bộ chưa xong: bấm Kiểm tra ngay</value></data>
+  <data name="PermissionsCurrent" xml:space="preserve"><value>Quyền Microsoft đang cấp cho app này:</value></data>
+  <data name="PermissionsNotAvailable" xml:space="preserve"><value>Chưa đọc được danh sách quyền Microsoft đã cấp.</value></data>
+  <data name="PermissionsRequired" xml:space="preserve"><value>Để lưu đăng nhập và tự kiểm tra khi mở Windows, app cần quyền đọc:
+• Microsoft Graph: Sites.Read.All.
+• SharePoint: AllSites.Read.
+Các quyền đăng nhập cơ bản được phép đi kèm: openid, profile, email, offline_access và User.Read.</value></data>
+  <data name="PermissionsRemove" xml:space="preserve"><value>Quyền phải bỏ khỏi app nếu muốn dùng chức năng này:</value></data>
+  <data name="PermissionsFullControl" xml:space="preserve"><value>toàn quyền; có thể thêm, sửa và xoá dữ liệu.</value></data>
+  <data name="PermissionsWrite" xml:space="preserve"><value>có thể thay đổi dữ liệu.</value></data>
+  <data name="PermissionsUnknown" xml:space="preserve"><value>ứng dụng chưa xác định được đây có phải quyền chỉ đọc.</value></data>
+  <data name="PermissionsCannotVerify" xml:space="preserve"><value>Không đọc được danh sách quyền từ thông tin đăng nhập. Ứng dụng chưa thể xác nhận app chỉ có quyền đọc nên chưa lưu đăng nhập.</value></data>
+  <data name="PermissionsSessionOnly" xml:space="preserve"><value>Bạn vẫn có thể tự đăng nhập để xem và tải tệp trong cửa sổ chính. Ứng dụng không lưu đăng nhập và không tự kiểm tra khi bạn đăng nhập Windows. Ứng dụng không sửa dữ liệu trên SharePoint.</value></data>
 </root>

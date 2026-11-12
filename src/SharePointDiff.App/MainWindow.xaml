@@ -167,7 +167,10 @@
   </Grid>
   <Border Grid.Row="5" Style="{StaticResource Card}" Margin="0,14,0,0" Padding="16,14">
    <StackPanel>
-    <TextBlock Text="{Binding Error}" Foreground="#B42318" TextWrapping="Wrap" MaxHeight="90" Margin="0,0,0,6" />
+    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="180" Margin="0,0,0,6">
+     <ScrollViewer.Style><Style TargetType="ScrollViewer"><Style.Triggers><DataTrigger Binding="{Binding Error}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></ScrollViewer.Style>
+     <TextBlock Text="{Binding Error}" Foreground="#B42318" TextWrapping="Wrap" />
+    </ScrollViewer>
     <Expander Header="{Binding L[TechnicalDetails]}" Margin="0,0,0,10">
      <Expander.Style><Style TargetType="Expander" BasedOn="{StaticResource {x:Type Expander}}"><Style.Triggers><DataTrigger Binding="{Binding ErrorDetail}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></Expander.Style>
      <DockPanel MaxHeight="170" Margin="0,8,0,0"><Button DockPanel.Dock="Right" Content="{Binding L[CopyError]}" Command="{Binding CopyErrorCommand}" VerticalAlignment="Top" Margin="8,0,0,0" />

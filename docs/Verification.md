@@ -1,5 +1,44 @@
 # Verification / Báo cáo kiểm chứng
 
+## Thử trên site thật ngày 12–13/11/2026
+
+Đã chạy đúng executable trong ZIP phát hành **v1.1.0**, đối chiếu SHA-256 với tệp trên GitHub. Dùng site người dùng chỉ định và thư mục thử riêng; không thay tài liệu dự án hoặc dữ liệu SharePoint.
+
+| Nội dung | Kết quả |
+|---|---|
+| Đăng nhập Microsoft trong ứng dụng | Thành công; kết nối **6 thư viện** |
+| Lượt so sánh đầu tiên | **2.452 tệp**, tất cả có QuickXorHash và thông tin tệp đầy đủ; chưa có tệp nội dung nào trong thư mục hoặc bộ nhớ đệm |
+| Tải tệp được chọn | Một tệp thử **40 byte**, kết quả `Verified`; SHA-256, dung lượng và QuickXorHash đúng |
+| Sửa local nhưng giữ nguyên dung lượng | Phát hiện `DifferentHash`; chế độ không ghi đè giữ nguyên bản đã sửa |
+| Ghi đè từng tệp | Chỉ thay một tệp đã chọn; bản sao lưu khớp SHA-256 của bản local đã sửa; bản cài đặt khớp bản SharePoint |
+| Dùng lại bản đã tải | Lần ghi đè dùng bộ nhớ đệm, tải thêm **0 byte** |
+| Dùng lại bản local ở đường dẫn khác | Đã chuyển bản trong thư mục thử sang chỗ khác và giữ bộ nhớ đệm ra ngoài để buộc dùng local; chép về đúng chỗ, giữ bản nguồn, tải thêm **0 byte** |
+| Tệp chỉ có trên máy | Giữ nguyên cả nội dung, ngày tạo/sửa và thuộc tính sau lượt kiểm tra nền |
+| Tải tiếp qua HTTP thật | Lõi xử lý của tag v1.1.0; chủ động ngắt luồng đọc sau **16 byte**, lượt sau gửi `Range: bytes=16-`, máy chủ trả **206**, tệp ghép xong đúng hash sau **2 lượt** |
+| Agent thật sau khi đăng nhập bằng tay | Hoàn tất kiểm tra trong **20,9 giây**, băm 3 tệp local, nhận biết **2.464 tệp mới**; không tải nội dung và không thay tệp local |
+| Chạy hai lượt kiểm tra cùng thư mục | Lượt thứ hai nhận `WorkspaceBusy`; không thay tệp local |
+| Hồ sơ Entra đang dùng | Có `AllSites.FullControl`; người dùng cho phép thử trong bộ nhớ. Đã xác nhận không lưu thông tin đăng nhập; chưa nghiệm thu đăng nhập tự động sau khi mở lại Windows |
+| Cấu hình thật | Tệp cấu hình mặc định và mục tự khởi động của Windows giữ nguyên |
+
+Ứng dụng đã tải **40 byte nội dung**; lượt thử tải tiếp riêng tải thêm **40 byte nội dung**. Con số này không bao gồm dữ liệu đăng nhập, danh sách tệp, thông tin tệp hoặc HTTP. Không đọc nội dung để giải thích khác biệt. Không có thao tác ghi lên SharePoint.
+
+Site tiếp tục nhận tệp mới trong lúc thử, nên các lượt quét sau có số tệp cao hơn và xuất hiện `CountChanged`. Đây không được ghi thành một thư viện rỗng hoặc một lượt so sánh hoàn toàn sạch.
+
+Phần ngắt luồng đọc là lỗi được tạo có chủ đích trên kết nối SharePoint thật, **không phải rút mạng hoặc đổi cấu hình mạng Windows**. Không đăng xuất Windows trong phiên làm việc của người dùng. Chưa kiểm chứng bằng site thật việc tự đăng nhập sau khi khởi động lại hoặc xoá các phiên bản sao lưu cũ; phần xoay vòng vẫn được kiểm thử bằng dữ liệu thử riêng.
+
+### Sửa sau lượt thử: v1.1.1
+
+- Thông báo cũ về quyền quá chung chung: đã thay bằng danh sách quyền thực tế, quyền cần dùng, quyền bị từ chối và lý do; có trong cửa sổ chính, thẻ thông báo và nhật ký.
+- Thông báo lỗi đã hiện không đổi ngôn ngữ: đã sửa để đổi cùng giao diện, giữ nguyên lựa chọn tệp.
+- Viết lại các nhãn và thông báo tiếng Việt thường gặp; phần thông báo dài có thể cuộn để đọc hết.
+- **138/138 kiểm thử tự động đạt**; bốn lượt kiểm tra giao diện/lỗi có chủ đích đạt. Kiểm tra thêm thông báo quyền bằng cả Việt–Anh, nội dung không bị cắt và không tạo cấu hình hoặc thông tin đăng nhập thật trong chế độ thử.
+
+Live v1.1.0 testing used the actual release executable, an isolated mirror and real Microsoft sign-in. Inventory, selected download, same-size local edits, verified backups, local/cache reuse, read-only background checks and an intentional read interruption with a real HTTP 206 response were exercised. The current registration has FullControl; persistence remained disabled. Actual Windows sign-out/sign-in and live version-retention pruning were not exercised. v1.1.1 fixes the permission explanation and switching the language of an existing error; the automated suite now has 138 passing tests.
+
+Private evidence remains outside tracked source. No customer host, file inventory, Entra IDs or token values are included here.
+
+## Báo cáo tự động trước đó của v1.1.0
+
 Ngày kiểm tra / Verification date: **2026-11-09** (v1.1.0), Windows x64, .NET SDK **10.0.302**.
 
 ## Kết quả / Results
