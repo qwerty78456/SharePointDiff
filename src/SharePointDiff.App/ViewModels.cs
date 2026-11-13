@@ -260,19 +260,19 @@ public sealed class MainViewModel : Observable, IDisposable
         var progress = CreateProgress();
         var result = await Task.Run(() => new SyncEngine(reader).ApplyAsync(scan, plan, progress, ct), ct);
         reportDirectory = result.RunDirectory;
-        var success = result.Results.Where(r => r.Status is "Verified" or "DownloadedUnverified").Select(r => SafePaths.Key(r.Path)).ToHashSet();
+        var completedResults = result.Results.Where(r => r.Status is "Verified" or "DownloadedUnverified").ToDictionary(r => SafePaths.Key(r.Path));
+        var success = completedResults.Keys.ToHashSet();
         for (int i = 0; i < Rows.Count; i++)
         {
             var row = Rows[i]; if (!success.Contains(SafePaths.Key(row.Path))) continue;
-            string actual = SafePaths.Resolve(scan.LocalRoot, row.Path); var hash = await FileHashing.ComputeAsync(actual, CancellationToken.None);
             var e = row.Entry;
-            var installed = await ManifestStore.ReadAsync(new Workspace(scan.SiteUrl, scan.LocalRoot), e.RelativePath, CancellationToken.None);
-            var latest = installed?.Remote ?? e.Remote;
+            var completed = completedResults[SafePaths.Key(row.Path)];
+            var latest = completed.InstalledRemote ?? throw new InvalidOperationException("Successful transfer has no installed metadata: " + row.Path);
             Rows[i] = new(new()
             {
                 RelativePath = e.RelativePath,
                 Remote = latest,
-                Local = new(e.RelativePath, actual, hash, File.GetLastWriteTimeUtc(actual)),
+                Local = completed.InstalledLocal ?? throw new InvalidOperationException("Successful transfer has no installed hashes: " + row.Path),
                 Status = latest?.QuickXorHash is { Length: > 0 } ? DiffStatus.Match : DiffStatus.Unverified
             }, L, () => (OverwriteMode)ModeIndex, RefreshPlan);
         }

@@ -140,7 +140,7 @@ public sealed class DownloadResilienceTests
         var once = new RecordingHandler((req, _, _) => Task.FromResult(Body(Data, From(req))));
         using var second = Reader(Api(), once, time);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => DriveAsync(time, second.DownloadAsync(file, locked, null, default), TimeSpan.FromSeconds(1)));
-        Assert.Single(once.Requests);
+        Assert.Empty(once.Requests); // local destination is checked before spending any download bandwidth
     }
     [Fact]
     public async Task UserCancellationIsNotTreatedAsStall()

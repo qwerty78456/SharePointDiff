@@ -47,7 +47,8 @@ public sealed record SyncPlan(IReadOnlyList<WorkItem> Items, int Reused, long Ne
 }
 public sealed record OperationProgress(string Code, int Completed = 0, int Total = 0, string? Path = null, long Bytes = 0, long TotalBytes = 0);
 public sealed record TransferResult(string Path, string Status, string? BackupPath, string? OldSha256,
-    string? NewSha256, string? SharePointHash, long BytesDownloaded, string? Error = null, int Attempts = 0, int Stalls = 0);
+    string? NewSha256, string? SharePointHash, long BytesDownloaded, string? Error = null, int Attempts = 0, int Stalls = 0,
+    LocalFile? InstalledLocal = null, RemoteFile? InstalledRemote = null, string? PreservedPath = null);
 public sealed record ApplyResult(string RunDirectory, IReadOnlyList<TransferResult> Results, bool Cancelled, string? StopReason = null, PruneResult? Pruned = null);
 /// <summary>Stored as runs/&lt;run&gt;/backup-meta/&lt;StableId(path)&gt;.json next to every verified backup.</summary>
 /// <param name="InstalledMetadata">The manifest record when the replaced bytes were a verified SharePoint version, else null.</param>
@@ -59,13 +60,15 @@ public sealed record PrunedItem(string Kind, string Path, string? RelativePath, 
     string? DriveId, string? ItemId, string? ETag, string? WebUrl, DateTimeOffset? Modified, DateTimeOffset? BackedUpAt, string? Reason = null);
 public sealed record PruneResult(IReadOnlyList<PrunedItem> Deleted, IReadOnlyList<PrunedItem> Kept, IReadOnlyList<PrunedItem> Failed, string? CacheSkippedReason);
 /// <param name="Attempts">Content attempts used (1 when nothing had to be resumed).</param><param name="Stalls">Attempts ended by a stall.</param>
-public sealed record DownloadResult(long NetworkBytes, int Attempts = 1, int Stalls = 0);
+public sealed record DownloadResult(long NetworkBytes, int Attempts = 1, int Stalls = 0, FileHashes? Hashes = null);
 
 public interface IRemoteReader
 {
     Task<IReadOnlyList<LibraryInfo>> GetLibrariesAsync(string siteUrl, IReadOnlyDictionary<string, string> mappings, CancellationToken ct);
     Task<RemoteInventory> GetInventoryAsync(string siteUrl, IReadOnlyList<LibraryInfo> libraries, IProgress<OperationProgress>? progress, CancellationToken ct);
     Task<RemoteFile> RefreshAsync(RemoteFile file, CancellationToken ct);
+    Task<RemoteFile> ReadContentStateAsync(RemoteFile file, CancellationToken ct) => RefreshAsync(file, ct);
+    Task PrepareApplyAsync(IReadOnlyList<RemoteFile> files, CancellationToken ct) => Task.CompletedTask;
     Task<DownloadResult> DownloadAsync(RemoteFile file, string partialPath, IProgress<OperationProgress>? progress, CancellationToken ct);
 }
 

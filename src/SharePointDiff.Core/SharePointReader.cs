@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
@@ -249,7 +250,12 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
         }
         return new(files, folders, issues);
     }
-    public async Task<RemoteFile> RefreshAsync(RemoteFile file, CancellationToken ct)
+    public async Task PrepareApplyAsync(IReadOnlyList<RemoteFile> files, CancellationToken ct)
+    {
+        columns.Clear();
+        foreach (var library in files.DistinctBy(f => (f.SiteUrl, f.LibraryId))) await ColumnsAsync(library.SiteUrl, library.LibraryId, ct);
+    }
+    public async Task<RemoteFile> ReadContentStateAsync(RemoteFile file, CancellationToken ct)
     {
         var row = await GetAsync($"{Graph}/v1.0/drives/{file.DriveId}/items/{file.ItemId}?$select={Selection}", ct);
         if (!string.Equals(SafePaths.Key(Text(row, "name")!), SafePaths.Key(file.Name), StringComparison.Ordinal)) throw new OperationException("RemoteChanged", file.RelativePath);
@@ -263,9 +269,17 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
                 if (SafePaths.Key(actual.TrimStart('/')) != SafePaths.Key(expected)) throw new OperationException("RemoteChanged", file.RelativePath);
             }
         }
+        return ToFile(file.SiteUrl, file.LibraryId, file.DriveId, file.RelativePath, row, file.Metadata);
+    }
+    public async Task<RemoteFile> RefreshAsync(RemoteFile file, CancellationToken ct)
+    {
+        var before = await ReadContentStateAsync(file, ct);
         var schema = await ColumnsAsync(file.SiteUrl, file.LibraryId, ct);
         var meta = await GetAsync($"{file.SiteUrl}/_api/web/lists(guid'{file.LibraryId}')/items({file.ListItemId})?$select={MetadataSelect(schema)}&$expand=FieldValuesAsText", ct);
-        return ToFile(file.SiteUrl, file.LibraryId, file.DriveId, file.RelativePath, row, MakeMetadata(meta, schema));
+        var after = await ReadContentStateAsync(file, ct);
+        if (before.ETag != after.ETag || before.Size != after.Size || before.QuickXorHash != after.QuickXorHash || before.ListItemId != after.ListItemId)
+            throw new OperationException("RemoteChanged", file.RelativePath);
+        return after with { Metadata = MakeMetadata(meta, schema) with { ObservedAt = Time.GetUtcNow() } };
     }
     private static readonly string[] Resumable = ["DownloadStalled", "DownloadInterrupted", "RequestTimeout", "ServiceUnavailable", "AuthNetworkFailed"];
     /// <summary>Downloads into <paramref name="partialPath"/>, resuming with Range from the bytes already there. Stalls, dropped
@@ -280,15 +294,19 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
         bool resume = state != null && state.Size == file.Size &&
             (state.QuickXorHash is { Length: > 0 } saved && file.QuickXorHash is { Length: > 0 } current ? saved == current : state.ETag == file.ETag);
         var received = new StrongBox<long>(); int stalls = 0;
+        await using var writer = new DownloadWriter(partialPath);
+        long initial = resume ? writer.Output.Length : 0;
+        if (initial > file.Size) initial = 0;
+        await writer.InitializeAsync(initial, ct);
         for (int attempt = 1; ; attempt++)
         {
-            long offset = (attempt > 1 || resume) && File.Exists(partialPath) ? new FileInfo(partialPath).Length : 0;
-            if (offset > file.Size) offset = 0;
+            long offset = writer.Output.Length;
             await JsonFiles.WriteAsync(statePath, new PartialState(file.ETag, file.Size, file.QuickXorHash, file.LibraryId), ct);
             try
             {
-                await DownloadOnceAsync(file, partialPath, offset, received, progress, ct);
-                return new(received.Value, attempt, stalls);
+                await DownloadOnceAsync(file, writer, offset, received, progress, ct);
+                await writer.Output.FlushAsync(ct); writer.Output.Flush(true);
+                return new(received.Value, attempt, stalls, writer.Hashes.Finish());
             }
             catch (OperationException ex) when (Resumable.Contains(ex.Code) && attempt < ResumeAttempts && !ct.IsCancellationRequested)
             {
@@ -298,7 +316,7 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
             }
         }
     }
-    private async Task DownloadOnceAsync(RemoteFile file, string partialPath, long offset, StrongBox<long> received, IProgress<OperationProgress>? progress, CancellationToken ct)
+    private async Task DownloadOnceAsync(RemoteFile file, DownloadWriter writer, long offset, StrongBox<long> received, IProgress<OperationProgress>? progress, CancellationToken ct)
     {
         // Asked again on every attempt: pre-authenticated download URLs expire.
         using var redirect = await SendAsync($"{Graph}/v1.0/drives/{file.DriveId}/items/{file.ItemId}/content", Graph, ct);
@@ -312,15 +330,16 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
             if (status is 404 or 410) throw new OperationException("RemoteMissing", file.RelativePath);
             if (status == 429 || status >= 500) throw new OperationException("ServiceUnavailable", file.RelativePath);
             if (!response.IsSuccessStatusCode) throw new OperationException("InvalidDownload", file.RelativePath);
-            if (response.StatusCode != HttpStatusCode.PartialContent) offset = 0;
+            if (response.StatusCode != HttpStatusCode.PartialContent) { offset = 0; await writer.InitializeAsync(0, ct); }
             else if (response.Content.Headers.ContentRange?.From != offset) throw new OperationException("InvalidDownload", file.RelativePath);
-            await CopyContentAsync(response, partialPath, offset, file, received, progress, ct);
+            await CopyContentAsync(response, writer, offset, file, received, progress, ct);
         }
         else
         {
             // A server may return bytes directly instead of a redirect. No bearer token is forwarded.
             if (!redirect.IsSuccessStatusCode) throw new OperationException("InvalidDownload", file.RelativePath);
-            await CopyContentAsync(redirect, partialPath, 0, file, received, progress, ct);
+            await writer.InitializeAsync(0, ct);
+            await CopyContentAsync(redirect, writer, 0, file, received, progress, ct);
         }
     }
     private async Task<HttpResponseMessage> SendContentAsync(Uri location, long offset, RemoteFile file, CancellationToken ct)
@@ -346,11 +365,15 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
             return response;
         }
     }
-    private async Task CopyContentAsync(HttpResponseMessage response, string path, long offset, RemoteFile file, StrongBox<long> received, IProgress<OperationProgress>? progress, CancellationToken ct)
+    private async Task CopyContentAsync(HttpResponseMessage response, DownloadWriter writer, long offset, RemoteFile file, StrongBox<long> received, IProgress<OperationProgress>? progress, CancellationToken ct)
     {
+        if (response.Content.Headers.ContentEncoding.Any(x => !x.Equals("identity", StringComparison.OrdinalIgnoreCase)))
+            throw new OperationException("InvalidDownload", file.RelativePath);
         await using var input = await response.Content.ReadAsStreamAsync(ct);
-        await using var output = new FileStream(path, offset > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true);
-        var buffer = new byte[1024 * 1024]; long written = 0; long last = Environment.TickCount64;
+        var output = writer.Output; output.Position = offset;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024); long written = 0; long last = Environment.TickCount64;
+        try
+        {
         while (true)
         {
             int n;
@@ -362,11 +385,39 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
                 catch (Exception ex) when (ex is IOException or HttpRequestException && !ct.IsCancellationRequested) { throw new OperationException("DownloadInterrupted", file.RelativePath, ex); }
             }
             if (n == 0) break;
+            received.Value += n; IoMetrics.Add("Network.FilePayloadBytes", n);
             if (offset + written + n > file.Size) throw new OperationException("HashMismatch", file.RelativePath);
-            await output.WriteAsync(buffer.AsMemory(0, n), ct); written += n; received.Value += n;
+            await output.WriteAsync(buffer.AsMemory(0, n), ct); writer.Hashes.Append(buffer.AsSpan(0, n)); written += n;
+            IoMetrics.Add("Content.WriteBytes", n);
             if (Environment.TickCount64 - last > 150) { progress?.Report(new("Downloading", Path: file.RelativePath, Bytes: offset + written, TotalBytes: file.Size)); last = Environment.TickCount64; }
         }
+        if (output.Length != file.Size) throw new OperationException("DownloadInterrupted", file.RelativePath);
         await output.FlushAsync(ct);
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
+    }
+    private sealed class DownloadWriter : IAsyncDisposable
+    {
+        public FileStream Output { get; }
+        public HashAccumulator Hashes { get; private set; } = new();
+        public DownloadWriter(string path) => Output = new(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        public async Task InitializeAsync(long offset, CancellationToken ct)
+        {
+            Hashes.Dispose(); Hashes = new(); Output.SetLength(offset); Output.Position = 0;
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
+            try
+            {
+                long left = offset;
+                while (left > 0)
+                {
+                    int n = await Output.ReadAsync(buffer.AsMemory(0, (int)Math.Min(left, buffer.Length)), ct);
+                    if (n == 0) throw new OperationException("FileChanged", Output.Name);
+                    Hashes.Append(buffer.AsSpan(0, n)); left -= n; IoMetrics.Add("Content.ReadBytes", n);
+                }
+            }
+            finally { ArrayPool<byte>.Shared.Return(buffer); }
+        }
+        public async ValueTask DisposeAsync() { Hashes.Dispose(); await Output.DisposeAsync(); }
     }
     public void Dispose() { api.Dispose(); content.Dispose(); if (!ReferenceEquals(contentRequest, api)) contentRequest.Dispose(); }
     private sealed record PartialState(string ETag, long Size, string? QuickXorHash = null, string? LibraryId = null);

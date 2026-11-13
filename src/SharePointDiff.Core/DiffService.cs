@@ -179,7 +179,9 @@ public sealed partial class DiffService(IRemoteReader remote)
             if (e.Status == DiffStatus.MissingLocal && picked) work.Add(new(e, false));
             else if (e.IsDifference && (mode == OverwriteMode.AllDifferences || (mode == OverwriteMode.Selected && picked))) work.Add(new(e, true));
         }
-        return new(work, work.Count(x => x.Entry.ReusePath != null), work.Where(x => x.Entry.ReusePath == null).Sum(x => x.Entry.Remote!.Size),
+        var groups = work.GroupBy(x => ContentGrouping.Key(x.Entry.Remote!)).ToArray();
+        return new(work, groups.Sum(g => g.Any(x => x.Entry.ReusePath != null) ? g.Count() : Math.Max(0, g.Count() - 1)),
+            groups.Where(g => !g.Any(x => x.Entry.ReusePath != null)).Sum(g => g.First().Entry.Remote!.Size),
             work.Where(x => x.Replace).Sum(x => x.Entry.Local!.Hashes.Size));
     }
 }

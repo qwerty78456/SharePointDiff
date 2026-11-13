@@ -416,4 +416,5 @@ Các quyền đăng nhập cơ bản được phép đi kèm: openid, profile, e
   <data name="ErrorInterruptedCommit" xml:space="preserve"><value>Lần cập nhật trước bị gián đoạn. Đã kiểm tra tệp hiện có và giữ các bản sao lưu; xem báo cáo khôi phục.</value></data>
   <data name="ErrorManifestWriteFailed" xml:space="preserve"><value>Không ghi được danh sách tệp đã cài. Các bản ghi hoàn tất vẫn được giữ để khôi phục; xem đường dẫn và nguyên nhân trong chi tiết.</value></data>
   <data name="ErrorMetadataStoreCorrupt" xml:space="preserve"><value>Thông tin đã lưu bị hỏng, thiếu sơ đồ cột hoặc có định dạng không hỗ trợ. Chưa tiếp tục cập nhật; xem tệp gây lỗi trong chi tiết.</value></data>
+  <data name="ErrorCommitPathConflict" xml:space="preserve"><value>Có chương trình khác đổi tệp đích trong lúc cập nhật. Đã giữ các bản liên quan; xem đường dẫn trong chi tiết trước khi khôi phục.</value></data>
 </root>

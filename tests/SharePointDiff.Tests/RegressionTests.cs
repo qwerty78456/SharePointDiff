@@ -167,10 +167,10 @@ public sealed class CommitGateTests
         var entry = new DiffEntry { RelativePath = file.RelativePath, Status = DiffStatus.DifferentHash, Local = local, Remote = file };
         Assert.Equal("Verified", Assert.Single((await new SyncEngine(remote).ApplyAsync(Fixture.Scan(f.Root, entry), Fixture.Plan(new WorkItem(entry, true)), null, default)).Results).Status);
         Assert.Equal(0, CommitGate.Active);
-        // The third refresh (just before installing) returns an unrepresentable creation time, so setting the
-        // timestamp after File.Move throws a programming fault from inside the gate.
+        // An unrepresentable source timestamp must fault after File.Move, inside the gate.
+        // The test deliberately does not depend on how many network refreshes precede installation.
         var fresh = Fixture.Remote("Docs/b", [3]); remote.Add(fresh, [3]);
-        remote.OnRefresh = r => { if (remote.RefreshCalls == 3 && r.ItemId == fresh.ItemId) remote.Files[fresh.ItemId] = fresh with { Created = DateTimeOffset.MinValue }; };
+        remote.OnRefresh = r => { if (r.ItemId == fresh.ItemId) remote.Files[fresh.ItemId] = fresh with { Created = DateTimeOffset.MinValue }; };
         var newEntry = new DiffEntry { RelativePath = fresh.RelativePath, Status = DiffStatus.MissingLocal, Remote = fresh };
         remote.ResetCounters();
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new SyncEngine(remote).ApplyAsync(Fixture.Scan(f.Root, newEntry), Fixture.Plan(new WorkItem(newEntry, false)), null, default));

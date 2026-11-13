@@ -5,6 +5,8 @@ namespace SharePointDiff.Core;
 
 public sealed class SyncEngine(IRemoteReader remote)
 {
+    // Deterministic fault/race injection at the actual filesystem boundary, never configured by the UI.
+    internal Action<string, string>? Checkpoint { get; init; }
     public async Task<ApplyResult> ApplyAsync(ScanResult scan, SyncPlan plan, IProgress<OperationProgress>? progress, CancellationToken ct)
     {
         using var measurements = IoMetrics.Begin("Apply");
@@ -19,6 +21,7 @@ public sealed class SyncEngine(IRemoteReader remote)
         if (drive.AvailableFreeSpace < required) throw new OperationException("DiskFull");
         await using var manifest = await ManifestSession.OpenAsync(workspace, ct);
         await manifest.ReserveAsync(run, plan.Items.Count, ct);
+        await remote.PrepareApplyAsync(plan.Items.Select(w => w.Entry.Remote!).ToArray(), ct);
         // Backup order comes from a counter kept under the lock, never from the wall clock.
         long sequence = await BackupSequence.ReserveAsync(workspace, plan.Replacements, ct) - 1;
         long NextSequence() => Interlocked.Increment(ref sequence);
@@ -27,6 +30,8 @@ public sealed class SyncEngine(IRemoteReader remote)
         var workToken = stopOnFault.Token;
         using var parallel = new SemaphoreSlim(2, 2);
         var cacheLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
+        var reuseSources = plan.Items.GroupBy(x => ContentGrouping.Key(x.Entry.Remote!))
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Entry.ReusePath).FirstOrDefault(p => p != null && File.Exists(p)));
         string? stopReason = null;
         async Task<TransferResult> FailAsync(WorkItem item, Exception ex, string code)
         {
@@ -36,9 +41,12 @@ public sealed class SyncEngine(IRemoteReader remote)
                 string candidate = SafePaths.Resolve(Path.Combine(run, "backups"), item.Entry.Local!.RelativePath);
                 if (File.Exists(candidate)) backup = candidate;
             }
-            var failure = new TransferResult(item.Entry.RelativePath, "Error", backup, item.Entry.Local?.Hashes.Sha256, null, null, 0, code);
+            var failure = new TransferResult(item.Entry.RelativePath, "Error", backup, item.Entry.Local?.Hashes.Sha256, null, null,
+                ex.Data["NetworkBytes"] is long bytes ? bytes : 0, code,
+                ex.Data["Attempts"] is int attempts ? attempts : 0, ex.Data["Stalls"] is int stalls ? stalls : 0,
+                PreservedPath: ex.Data["PreservedPath"] as string);
             await JsonFiles.WriteAsync(Path.Combine(run, "errors", JsonFiles.StableId(item.Entry.RelativePath) + ".json"),
-                new { Path = item.Entry.RelativePath, Code = code, ExceptionType = ex.GetType().Name, Message = ex.Message, ex.StackTrace });
+                new { Path = item.Entry.RelativePath, Code = code, ExceptionType = ex.GetType().Name, Message = ex.Message, Details = ex.Data, ex.StackTrace });
             return failure;
         }
         async Task Execute(WorkItem item)
@@ -47,7 +55,7 @@ public sealed class SyncEngine(IRemoteReader remote)
             try
             {
                 TransferResult result;
-                try { result = await TransferOneAsync(workspace, run, item, cacheLocks, NextSequence, manifest, progress, workToken); }
+                try { result = await TransferOneAsync(workspace, run, item, cacheLocks, NextSequence, manifest, reuseSources, progress, workToken); }
                 // A cancellation nobody asked for is a timeout: report it as a per-file error, not as "Cancelled".
                 catch (OperationCanceledException ex) when (!workToken.IsCancellationRequested) { result = await FailAsync(item, ex, "RequestTimeout"); }
                 catch (OperationCanceledException) { result = new(item.Entry.RelativePath, "Cancelled", null, null, null, null, 0); }
@@ -97,140 +105,160 @@ public sealed class SyncEngine(IRemoteReader remote)
         return report;
     }
     private async Task<TransferResult> TransferOneAsync(Workspace workspace, string run, WorkItem work,
-        ConcurrentDictionary<string, SemaphoreSlim> locks, Func<long> nextSequence, ManifestSession manifest, IProgress<OperationProgress>? progress, CancellationToken ct)
+        ConcurrentDictionary<string, SemaphoreSlim> locks, Func<long> nextSequence, ManifestSession manifest,
+        IReadOnlyDictionary<string, string?> reuseSources, IProgress<OperationProgress>? progress, CancellationToken ct)
     {
+        using var phase = IoMetrics.Stage("Transfer");
         var entry = work.Entry;
         if (entry.Remote == null || entry.Status is DiffStatus.LocalOnly or DiffStatus.Error or DiffStatus.Unverified or DiffStatus.Match)
             throw new OperationException("NotEligible", entry.RelativePath);
-        var file = await remote.RefreshAsync(entry.Remote, ct);
-        if (!SameContent(entry.Remote, file)) throw new OperationException("RemoteChanged", entry.RelativePath);
-        if (!file.Metadata.Complete) throw new OperationException("MetadataIncomplete", entry.RelativePath);
+        if (!entry.Remote.Metadata.Complete) throw new OperationException("MetadataIncomplete", entry.RelativePath);
+        var file = entry.Remote;
         string destination = SafePaths.Resolve(workspace.LocalRoot, entry.RelativePath);
         if (!work.Replace && (File.Exists(destination) || Directory.Exists(destination))) throw new OperationException("FileChanged", entry.RelativePath);
-        FileHashes? old = null;
         if (work.Replace)
         {
-            old = await FileHashing.ComputeAsync(destination, ct);
-            if (old != entry.Local!.Hashes) throw new OperationException("FileChanged", entry.RelativePath);
+            var stat = new FileInfo(destination);
+            if (!stat.Exists || stat.Length != entry.Local!.Hashes.Size || stat.LastWriteTimeUtc != entry.Local.LastWriteUtc)
+                throw new OperationException("FileChanged", entry.RelativePath);
         }
+        destination = SafePaths.Resolve(workspace.LocalRoot, entry.RelativePath, true);
+        string install = destination + ".spdiff-" + Guid.NewGuid().ToString("N") + ".tmp";
         string cache = workspace.CachePath(file);
         var cacheLock = locks.GetOrAdd(cache, _ => new SemaphoreSlim(1, 1));
-        await cacheLock.WaitAsync(ct);
-        long downloaded = 0; int attempts = 0, stalls = 0; FileHashes verified; string origin = "Downloaded";
+        long downloaded = 0; int attempts = 0, stalls = 0;
+        string origin = "Downloaded";
+        string? backup = null, preserved = null;
+        bool commitAttempted = false;
+        bool sourceObserved = false;
+        FileHashes? old = null;
         try
         {
-            bool valid = false;
-            if (File.Exists(cache))
+            FileHashes verified;
+            FileHashes? expectedStage = null;
+            await cacheLock.WaitAsync(ct);
+            try
             {
-                verified = await FileHashing.ComputeAsync(cache, ct);
-                valid = Matches(verified, file) && JsonFiles.Read<CacheStamp>(cache + ".verified.json") is { } stamp &&
-                    stamp.Sha256 == verified.Sha256 && (file.QuickXorHash is { Length: > 0 } || stamp.ETag == file.ETag);
-            }
-            if (!valid)
-            {
-                string partial = cache + ".partial";
-                bool reused = false;
-                if (entry.ReusePath is { } source && File.Exists(source) && file.QuickXorHash is { Length: > 0 })
+                bool staged = false;
+                var stamp = File.Exists(cache) ? JsonFiles.Read<CacheStamp>(cache + ".verified.json") : null;
+                if (stamp != null && (file.QuickXorHash is { Length: > 0 } || stamp.ETag == file.ETag))
                 {
-                    var sourceHash = await FileHashing.ComputeAsync(source, ct);
-                    if (Matches(sourceHash, file))
+                    var copied = await FileHashing.CopyHashAsync(cache, install, ct);
+                    if (Matches(copied, file) && copied.Sha256 == stamp.Sha256) { staged = true; origin = "Cache"; expectedStage = copied; }
+                    else File.Delete(install);
+                }
+                if (!staged)
+                {
+                    // A cheap Graph-only check prevents needless content transfer of an obsolete plan.
+                    var start = await remote.ReadContentStateAsync(file, ct);
+                    if (!SameContent(file, start)) throw new OperationException("RemoteChanged", entry.RelativePath);
+                    file = start; sourceObserved = true;
+                    string partial = cache + ".partial";
+                    FileHashes? received = null;
+                    if (reuseSources.GetValueOrDefault(ContentGrouping.Key(file)) is { } source && File.Exists(source) && file.QuickXorHash is { Length: > 0 })
                     {
-                        await CopyAsync(source, partial, ct); reused = true; origin = "Reused";
+                        received = await FileHashing.CopyHashAsync(source, partial, ct, FileMode.Create);
+                        if (Matches(received, file)) origin = "Reused";
+                        else { File.Delete(partial); received = null; }
                     }
+                    if (received == null)
+                    {
+                        var transfer = await remote.DownloadAsync(file, partial, progress, ct);
+                        downloaded = transfer.NetworkBytes; attempts = transfer.Attempts; stalls = transfer.Stalls;
+                        received = transfer.Hashes ?? await FileHashing.ComputeAsync(partial, ct);
+                    }
+                    if (!Matches(received, file))
+                    {
+                        File.Move(partial, partial + ".invalid_" + Guid.NewGuid().ToString("N"));
+                        throw new OperationException("HashMismatch", entry.RelativePath);
+                    }
+                    File.Move(partial, cache, true);
+                    var copied = await FileHashing.CopyHashAsync(cache, install, ct);
+                    if (copied != received) throw new OperationException("HashMismatch", entry.RelativePath);
+                    expectedStage = copied;
+                    // The source was read back from cache before it is marked verified.
+                    await JsonFiles.WriteAsync(cache + ".verified.json", new CacheStamp(copied.Sha256, file.ETag, file.LibraryId, file.DriveId, file.ItemId), ct);
                 }
-                if (!reused)
-                {
-                    var transfer = await remote.DownloadAsync(file, partial, progress, ct); downloaded = transfer.NetworkBytes; attempts = transfer.Attempts; stalls = transfer.Stalls;
-                }
-                verified = await FileHashing.ComputeAsync(partial, ct);
-                if (!Matches(verified, file))
-                {
-                    // Keep the bad bytes separate, so the next retry cannot resume corrupt content.
-                    File.Move(partial, partial + ".invalid_" + Guid.NewGuid().ToString("N"));
+                // Independent readback of the actual staged bytes remains mandatory before touching the original.
+                verified = await FileHashing.ComputeAsync(install, ct);
+                if (verified != expectedStage || !Matches(verified, file))
                     throw new OperationException("HashMismatch", entry.RelativePath);
-                }
-                var after = await remote.RefreshAsync(file, ct);
-                if (after.ETag != file.ETag || !SameContent(file, after)) throw new OperationException("RemoteChanged", entry.RelativePath);
-                file = after;
-                if (!file.Metadata.Complete) throw new OperationException("MetadataIncomplete", entry.RelativePath);
-                File.Move(partial, cache, true);
-                await JsonFiles.WriteAsync(cache + ".verified.json", new CacheStamp(verified.Sha256, file.ETag, file.LibraryId, file.DriveId, file.ItemId), ct);
             }
-            verified = await FileHashing.ComputeAsync(cache, ct);
-            if (!Matches(verified, file)) throw new OperationException("HashMismatch", entry.RelativePath);
-        }
-        finally { cacheLock.Release(); }
-        // A cached/local reuse must also be guarded by the current remote eTag.
-        var current = await remote.RefreshAsync(file, ct);
-        if (current.ETag != file.ETag || !SameContent(file, current) || !current.Metadata.Complete)
-            throw new OperationException("RemoteChanged", entry.RelativePath);
-        file = current;
-        ct.ThrowIfCancellationRequested();
-        destination = SafePaths.Resolve(workspace.LocalRoot, entry.RelativePath, true);
-        string? backup = null;
-        if (work.Replace)
-        {
-            var check = await FileHashing.ComputeAsync(destination, ct);
-            if (check != old) throw new OperationException("FileChanged", entry.RelativePath);
-            string backupRoot = Path.Combine(run, "backups"); Directory.CreateDirectory(backupRoot);
-            backup = SafePaths.Resolve(backupRoot, entry.Local!.RelativePath, true);
-            await CopyAsync(destination, backup, ct, FileMode.CreateNew);
-            var b = await FileHashing.ComputeAsync(backup, ct);
-            if (b != old) throw new OperationException("BackupFailed", entry.RelativePath);
-            DateTime created = File.GetCreationTimeUtc(destination), modified = File.GetLastWriteTimeUtc(destination);
-            File.SetCreationTimeUtc(backup, created); File.SetLastWriteTimeUtc(backup, modified);
-            var oldMetadata = await manifest.ReadAsync(entry.RelativePath, ct);
-            if (oldMetadata?.Sha256 != old!.Sha256) oldMetadata = null;
-            // Kept apart from the backup tree, so a user file named "X.metadata.json" can never collide with X's record.
-            await JsonFiles.WriteNewAsync(Path.Combine(run, "backup-meta", JsonFiles.StableId(entry.RelativePath) + ".json"),
-                new BackupRecord(entry.RelativePath, backup, old, entry.Local.FullPath, created, modified, oldMetadata, DateTimeOffset.Now, nextSequence()), ct);
-        }
-        // Install temp is on the destination volume; backups are already durable and independently verified.
-        string install = destination + ".spdiff-" + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            await CopyAsync(cache, install, ct, FileMode.CreateNew);
-            var staged = await FileHashing.ComputeAsync(install, ct);
-            if (staged != verified) throw new OperationException("HashMismatch", entry.RelativePath);
+            finally { cacheLock.Release(); }
+            var current = await remote.RefreshAsync(file, ct);
+            if (!SameContent(file, current) || ((sourceObserved || string.IsNullOrEmpty(file.QuickXorHash)) && current.ETag != file.ETag))
+                throw new OperationException("RemoteChanged", entry.RelativePath);
+            if (!current.Metadata.Complete) throw new OperationException("MetadataIncomplete", entry.RelativePath);
+            file = current;
             ct.ThrowIfCancellationRequested();
             SafePaths.AssertDirectoryChain(workspace.LocalRoot, destination);
-            // Sign-out waits (briefly) for transfers inside the gate, so a commit is followed by its verification and audit records.
+            using var guard = work.Replace ? new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete,
+                1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan) : null;
+            var guardedIdentity = guard != null ? NativeFileInfo.TryRead(guard) : null;
+            if (work.Replace)
+            {
+                string backupRoot = Path.Combine(run, "backups"); Directory.CreateDirectory(backupRoot);
+                backup = SafePaths.Resolve(backupRoot, entry.Local!.RelativePath, true);
+                old = await FileHashing.CopyHashAsync(guard!, backup, ct);
+                if (old != entry.Local.Hashes) throw new OperationException("FileChanged", entry.RelativePath);
+                if (await FileHashing.ComputeAsync(backup, ct) != old) throw new OperationException("BackupFailed", entry.RelativePath);
+                DateTime created = File.GetCreationTimeUtc(destination), modified = File.GetLastWriteTimeUtc(destination);
+                File.SetCreationTimeUtc(backup, created); File.SetLastWriteTimeUtc(backup, modified);
+                var oldMetadata = await manifest.ReadAsync(entry.RelativePath, ct);
+                if (oldMetadata?.Sha256 != old.Sha256) oldMetadata = null;
+                await JsonFiles.WriteNewAsync(Path.Combine(run, "backup-meta", JsonFiles.StableId(entry.RelativePath) + ".json"),
+                    new BackupRecord(entry.RelativePath, backup, old, entry.Local.FullPath, created, modified, oldMetadata, DateTimeOffset.Now, nextSequence()), ct);
+                // Keep the final live-path read: the guard allows rename/delete, not just our own ReplaceFile.
+                if (await FileHashing.ComputeAsync(destination, ct) != old) throw new OperationException("FileChanged", entry.RelativePath);
+                preserved = SafePaths.Resolve(run, "replaced/" + Guid.NewGuid().ToString("N") + ".bin", true);
+            }
+            SafePaths.AssertDirectoryChain(workspace.LocalRoot, destination);
+            await JsonFiles.WriteAsync(Path.Combine(run, "intents", JsonFiles.StableId(entry.RelativePath) + ".json"),
+                new CommitIntent(entry.RelativePath, backup, old?.Sha256, verified.Sha256, file, preserved), ct);
             CommitGate.Enter();
             try
             {
-                ct.ThrowIfCancellationRequested();
-                if (work.Replace)
-                {
-                    // Lock out writers while hashing and replacing; a locked user document is reported as an error.
-                    using var guard = new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-                    var check = await FileHashing.ComputeAsync(destination, ct);
-                    if (check != old) throw new OperationException("FileChanged", entry.RelativePath);
-                    await JsonFiles.WriteAsync(Path.Combine(run, "intents", JsonFiles.StableId(entry.RelativePath) + ".json"),
-                        new { entry.RelativePath, BackupPath = backup, OldSha256 = old!.Sha256, NewSha256 = verified.Sha256, Remote = file }, ct);
-                    File.Replace(install, destination, null, true);
-                }
+                ct.ThrowIfCancellationRequested(); Checkpoint?.Invoke("BeforeReplace", destination); commitAttempted = true;
+                if (work.Replace) File.Replace(install, destination, preserved, true);
                 else File.Move(install, destination, false);
-                // Cancellation never interrupts verification/auditing after a replacement has committed.
+                if (preserved != null)
+                {
+                    await using var actual = new FileStream(preserved, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+                    var actualIdentity = NativeFileInfo.TryRead(actual);
+                    bool conflict = guardedIdentity != null && actualIdentity != null
+                        ? !NativeFileInfo.SameObject(guardedIdentity, actualIdentity)
+                        : await FileHashing.ComputeAsync(preserved, CancellationToken.None) != old;
+                    if (conflict)
+                        throw new OperationException("CommitPathConflict", entry.RelativePath);
+                }
+                // From this point cancellation must not interrupt verification or durable audit records.
                 File.SetCreationTimeUtc(destination, file.Created.UtcDateTime);
                 File.SetLastWriteTimeUtc(destination, file.Modified.UtcDateTime);
                 var installed = await FileHashing.ComputeAsync(destination, CancellationToken.None);
                 if (installed != verified) throw new OperationException("HashMismatch", entry.RelativePath);
-                var result = new TransferResult(entry.RelativePath, file.QuickXorHash is { Length: > 0 } ? "Verified" : "DownloadedUnverified", backup, old?.Sha256, installed.Sha256, file.QuickXorHash, downloaded, null, attempts, stalls);
-                await manifest.RecordCommitAsync(run, file, installed, result, origin);
+                var local = new LocalFile(entry.RelativePath, destination, installed, File.GetLastWriteTimeUtc(destination));
+                var result = new TransferResult(entry.RelativePath, file.QuickXorHash is { Length: > 0 } ? "Verified" : "DownloadedUnverified",
+                    backup, old?.Sha256, installed.Sha256, file.QuickXorHash, downloaded, null, attempts, stalls, local, file);
+                await manifest.RecordCommitAsync(run, file, installed, result with { InstalledLocal = null, InstalledRemote = null }, origin);
+                if (preserved != null) File.Delete(preserved); // exact original retained independently in the verified backup
                 return result;
             }
             finally { CommitGate.Exit(); }
         }
-        finally { if (File.Exists(install)) File.Delete(install); }
+        catch (Exception ex)
+        {
+            ex.Data["NetworkBytes"] = downloaded; ex.Data["Attempts"] = attempts; ex.Data["Stalls"] = stalls;
+            if (preserved != null) ex.Data["PreservedPath"] = preserved;
+            throw;
+        }
+        finally
+        {
+            // Keep artifacts of an attempted commit for recovery; pre-commit staging is disposable.
+            if (!commitAttempted && File.Exists(install)) File.Delete(install);
+        }
     }
     private static bool SameContent(RemoteFile a, RemoteFile b) => a.ItemId == b.ItemId && a.DriveId == b.DriveId && a.Size == b.Size && a.QuickXorHash == b.QuickXorHash;
     private static bool Matches(FileHashes h, RemoteFile file) => h.Size == file.Size && (string.IsNullOrEmpty(file.QuickXorHash) || h.QuickXorHash == file.QuickXorHash);
-    private static async Task CopyAsync(string source, string target, CancellationToken ct, FileMode mode = FileMode.Create)
-    {
-        await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, true);
-        await using var output = new FileStream(target, mode, FileAccess.Write, FileShare.None, 1024 * 1024, true);
-        await input.CopyToAsync(output, 1024 * 1024, ct); await output.FlushAsync(ct); output.Flush(true);
-    }
     /// <param name="LibraryId">Lets retention delete a superseded entry only when its library was read completely.</param>
     internal sealed record CacheStamp(string Sha256, string ETag, string? LibraryId = null, string? DriveId = null, string? ItemId = null);
 }
