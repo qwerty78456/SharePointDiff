@@ -110,6 +110,7 @@ public sealed class MainViewModel : Observable, IDisposable
     public bool ReadAllRemote { get => readAllRemote; set => Set(ref readAllRemote, value); }
     public bool IdleVerification { get => settings.IdleVerification; set { settings.IdleVerification = value; if (value) idle?.Resume(); else if (idle != null) _ = idle.PauseAsync(user: true); Persist(); Raise(); } }
     public string HashSummary => L.Format("HashSummary", Rows.Count(r => r.Entry.Local?.HashBasis == HashBasis.Saved), Rows.Count(r => r.Entry.Local?.HashBasis == HashBasis.Fresh));
+    public string RemoteReadSummary => scan?.RemoteReads is { Count: > 0 } reads ? L.Format("RemoteReadSummary", reads.Min(r => r.FullReadAt).ToLocalTime().ToString("g", L.Culture)) : "";
     public string IoSummary => statistics == null ? "" : L.Format("IoSummary", FileRow.FormatBytes(statistics.Counters.GetValueOrDefault("Content.ReadBytes")),
         FileRow.FormatBytes(statistics.Counters.GetValueOrDefault("Metadata.WriteBytes")), statistics.Counters.GetValueOrDefault("Network.GraphRequests") + statistics.Counters.GetValueOrDefault("Network.RestRequests"));
     public string IdleInfo => idle?.LastError is { } issue ? L["Error" + issue.Code] + " " + issue.Path
@@ -348,7 +349,7 @@ public sealed class MainViewModel : Observable, IDisposable
         ErrorDetail = ErrorDetails.Format(ex, action, path, log);
     }
     private void SetStatus(string code, int done = 0, int count = 0) { statusCode = code; completed = done; total = count; Raise(nameof(StatusText)); Raise(nameof(ProgressPercent)); Raise(nameof(Indeterminate)); }
-    private void RefreshPlan() { if (bulkSelecting) return; Raise(nameof(Estimate)); Raise(nameof(Summary)); Raise(nameof(SummaryStats)); Raise(nameof(HashSummary)); Raise(nameof(IoSummary)); Raise(nameof(Details)); Raise(nameof(SelectedPath)); Raise(nameof(MetadataItems)); Raise(nameof(IdleInfo)); UpdateCommands(); }
+    private void RefreshPlan() { if (bulkSelecting) return; Raise(nameof(Estimate)); Raise(nameof(Summary)); Raise(nameof(SummaryStats)); Raise(nameof(HashSummary)); Raise(nameof(RemoteReadSummary)); Raise(nameof(IoSummary)); Raise(nameof(Details)); Raise(nameof(SelectedPath)); Raise(nameof(MetadataItems)); Raise(nameof(IdleInfo)); UpdateCommands(); }
     private void RefreshLanguage() { foreach (var r in Rows) r.RefreshText(); FilesView.Refresh(); Raise(nameof(StatusText)); Raise(nameof(Error)); RefreshPlan(); RefreshStartup(); }
     // ---- Check at Windows sign-in -------------------------------------------------------------
     public RelayCommand UseThisCopyCommand { get; }

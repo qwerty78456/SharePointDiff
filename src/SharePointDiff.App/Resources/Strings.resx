@@ -436,4 +436,7 @@ Basic sign-in scopes may accompany them: openid, profile, email, offline_access 
   <data name="IdleChecked" xml:space="preserve"><value>Lượt kiểm tra khi máy rảnh vừa qua: {0:N0} khối, đã đọc {1}.</value></data>
   <data name="IdleCheckHint" xml:space="preserve"><value>Chạy sau 5 phút không thao tác, tối đa 2% dữ liệu mỗi ngày và không quá 1 GiB; với thư mục nhỏ làm tròn theo khối 8 MiB.</value></data>
   <data name="IdlePaused" xml:space="preserve"><value>Đã dừng kiểm tra khi máy rảnh. Tắt rồi bật lại tùy chọn này để tiếp tục.</value></data>
+  <data name="ErrorDeltaExpired" xml:space="preserve"><value>SharePoint không còn chấp nhận mốc kiểm tra cũ. Cần đọc lại danh sách đầy đủ.</value></data>
+  <data name="ErrorInvalidDeltaLink" xml:space="preserve"><value>SharePoint trả đường dẫn phân trang hoặc kiểm tra thay đổi không hợp lệ. Đã dừng để không gửi thông tin đăng nhập sai nơi.</value></data>
+  <data name="RemoteReadSummary" xml:space="preserve"><value>Lần đọc đầy đủ gần nhất: {0} · Không tự đọc lại theo lịch.</value></data>
 </root>

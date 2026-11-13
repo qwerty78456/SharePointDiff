@@ -17,7 +17,10 @@ public sealed record RemoteFile(
     string RelativePath, string Name, long Size, string? QuickXorHash, string ETag,
     DateTimeOffset Created, DateTimeOffset Modified, string WebUrl, JsonElement Basic,
     MetadataSnapshot Metadata);
-public sealed record RemoteInventory(IReadOnlyList<RemoteFile> Files, IReadOnlyList<string> Folders, IReadOnlyList<OperationIssue> Issues);
+public sealed record LibraryReadInfo(string LibraryId, bool Incremental, DateTimeOffset FullReadAt);
+public sealed record RemoteInventory(IReadOnlyList<RemoteFile> Files, IReadOnlyList<string> Folders, IReadOnlyList<OperationIssue> Issues,
+    bool SnapshotChanged = true, IReadOnlyList<LibraryReadInfo>? Reads = null);
+public sealed record InventoryReadOptions(string StateDirectory, bool ReadAll = false);
 public sealed record OperationIssue(string Code, string Path, string? Detail = null);
 public sealed class DiffEntry
 {
@@ -31,7 +34,8 @@ public sealed class DiffEntry
     public bool IsDifference => Status is DiffStatus.DifferentHash or DiffStatus.DifferentSize;
 }
 public sealed record ScanResult(string SiteUrl, string LocalRoot, IReadOnlyList<DiffEntry> Entries,
-    IReadOnlyList<string> RemoteFolders, IReadOnlyList<OperationIssue> Issues, DateTimeOffset ScannedAt, IReadOnlyList<LibraryInfo>? Libraries = null, IoStatistics? Statistics = null);
+    IReadOnlyList<string> RemoteFolders, IReadOnlyList<OperationIssue> Issues, DateTimeOffset ScannedAt, IReadOnlyList<LibraryInfo>? Libraries = null, IoStatistics? Statistics = null,
+    IReadOnlyList<LibraryReadInfo>? RemoteReads = null);
 /// <summary>Libraries seen (<see cref="Known"/>) and ticked (<see cref="Included"/>) at the last completed Compare in the main window.</summary>
 public sealed record LibrarySelection(IReadOnlyList<string> Known, IReadOnlyList<string> Included, DateTimeOffset ComparedAt);
 public enum Provenance { Pristine, Revert, Conflict, Unknown }
@@ -70,6 +74,8 @@ public interface IRemoteReader
 {
     Task<IReadOnlyList<LibraryInfo>> GetLibrariesAsync(string siteUrl, IReadOnlyDictionary<string, string> mappings, CancellationToken ct);
     Task<RemoteInventory> GetInventoryAsync(string siteUrl, IReadOnlyList<LibraryInfo> libraries, IProgress<OperationProgress>? progress, CancellationToken ct);
+    Task<RemoteInventory> GetInventoryAsync(string siteUrl, IReadOnlyList<LibraryInfo> libraries, IProgress<OperationProgress>? progress, CancellationToken ct, InventoryReadOptions options) =>
+        GetInventoryAsync(siteUrl, libraries, progress, ct);
     Task<RemoteFile> RefreshAsync(RemoteFile file, CancellationToken ct);
     Task<RemoteFile> ReadContentStateAsync(RemoteFile file, CancellationToken ct) => RefreshAsync(file, ct);
     Task PrepareApplyAsync(IReadOnlyList<RemoteFile> files, CancellationToken ct) => Task.CompletedTask;

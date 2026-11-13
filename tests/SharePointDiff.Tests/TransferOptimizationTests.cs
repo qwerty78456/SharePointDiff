@@ -7,6 +7,21 @@ namespace SharePointDiff.Tests;
 public sealed class TransferOptimizationTests
 {
     [Fact]
+    public async Task FreshReplacementReadsSixPayloadLengthsAndStillWritesThreeVerifiedCopies()
+    {
+        using var f = new Fixture(); byte[] old = new byte[65537], current = new byte[65537];
+        new Random(1).NextBytes(old); new Random(2).NextBytes(current);
+        await f.LocalAsync("Docs/a", old); var file = Fixture.Remote("Docs/a", current); var remote = new FakeRemote(); remote.Add(file, current);
+        var scan = await new DiffService(remote).ScanAsync(Fixture.Site, f.Root, [Fixture.Library], null, default, report: false);
+        var row = scan.Entries.Single();
+        var result = await new SyncEngine(remote).ApplyAsync(scan, Fixture.Plan(new WorkItem(row, true)), null, default);
+        Assert.Equal("Verified", result.Results.Single().Status);
+        Assert.Equal(6L * current.Length, result.Statistics!.Counters["Content.ReadBytes"]);
+        Assert.Equal(3L * current.Length, result.Statistics.Counters["Content.WriteBytes"]);
+        Assert.Equal(current.Length, result.Statistics.Counters["Network.FilePayloadBytes"]);
+        Assert.Equal(old.Length, scan.Statistics!.Counters["Content.ReadBytes"]);
+    }
+    [Fact]
     public async Task AReuseCandidateInAnySelectedRowFeedsTheWholeContentGroupWithoutNetwork()
     {
         using var f = new Fixture(); var source = await f.LocalAsync("source", [1, 2, 3]); var remote = new FakeRemote();

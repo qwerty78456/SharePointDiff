@@ -21,6 +21,7 @@ public sealed class ManifestSession : IAsyncDisposable
     private int dirty;
     private bool disposed;
     public List<OperationIssue> RecoveryIssues { get; } = [];
+    internal Exception? PrimaryFailure { get; set; }
     private string PathName => Path.Combine(workspace.DataRoot, "installed-manifest.json");
     private ManifestSession(Workspace workspace, Dictionary<string, InstalledRecord> records, long sequence)
     {
@@ -142,7 +143,8 @@ public sealed class ManifestSession : IAsyncDisposable
     private async Task CheckpointInsideAsync()
     {
         if (dirty == 0) return;
-        await JsonFiles.WriteAsync(PathName, new ManifestEnvelope(2, lastSequence, records), CancellationToken.None);
+        try { await JsonFiles.WriteAsync(PathName, new ManifestEnvelope(2, lastSequence, records), CancellationToken.None); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { throw new OperationException("ManifestWriteFailed", PathName, ex); }
         IoMetrics.Add("Manifest.Checkpoints"); dirty = 0;
     }
     private async Task CheckpointTimerAsync()
@@ -210,6 +212,7 @@ public sealed class ManifestSession : IAsyncDisposable
         if (disposed) return; disposed = true;
         await StopTimerAsync();
         try { await FlushAsync(); }
+        catch (Exception ex) when (PrimaryFailure != null) { PrimaryFailure.Data["ManifestCheckpointFailure"] = ex.ToString(); }
         finally { gate.Dispose(); timerStop.Dispose(); }
     }
 }

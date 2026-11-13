@@ -5,21 +5,18 @@ public sealed record AgentCheckResult(AgentState State, CheckOutcome? Outcome, s
 
 public interface INetworkProbe { Task<bool> IsOnlineAsync(CancellationToken ct); }
 
-/// <summary>Online means Microsoft sign-in answers at all (any HTTP status); an anonymous GET, no token involved.</summary>
-public sealed class HttpNetworkProbe(string tenant, HttpClient? client = null) : INetworkProbe
+/// <summary>Local interface state only; reachability is established by the real SharePoint request.</summary>
+public sealed class NetworkAvailabilityProbe : INetworkProbe
 {
-    private readonly HttpClient http = client ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-    public async Task<bool> IsOnlineAsync(CancellationToken ct)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(10));
-        try
-        {
-            using var response = await http.GetAsync($"https://login.microsoftonline.com/{Uri.EscapeDataString(tenant)}/v2.0/.well-known/openid-configuration", HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-            return true;
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return false; }
-        catch (HttpRequestException) { return false; }
-    }
+    public Task<bool> IsOnlineAsync(CancellationToken ct)
+    { ct.ThrowIfCancellationRequested(); return Task.FromResult(System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable()); }
+}
+
+/// <summary>Compatibility with v1.1 callers; no longer makes an OIDC network request.</summary>
+public sealed class HttpNetworkProbe : INetworkProbe
+{
+    public HttpNetworkProbe(string tenant, HttpClient? client = null) { _ = tenant; _ = client; }
+    public Task<bool> IsOnlineAsync(CancellationToken ct) => new NetworkAvailabilityProbe().IsOnlineAsync(ct);
 }
 
 /// <summary>The background check: waits for the network, runs <see cref="DiffService.CheckAsync"/>, retries transient failures
@@ -41,7 +38,8 @@ public sealed class AgentCheckRunner(IRemoteReader remote, INetworkProbe probe, 
         TimeSpan budget = userInitiated ? ManualBudget : LogonBudget, networkDeadline = userInitiated ? ManualNetworkDeadline : LogonNetworkDeadline;
         AgentCheckResult Result(AgentState state, CheckOutcome? outcome, string? code, string? path, int attempts, TimeSpan wait) =>
             new(state, outcome, code, path, time.GetElapsedTime(started), attempts, wait);
-        while (!await probe.IsOnlineAsync(ct))
+        ct.ThrowIfCancellationRequested();
+        while (!userInitiated && !await probe.IsOnlineAsync(ct))
         {
             if (time.GetElapsedTime(started) + NetworkPoll > networkDeadline) return Result(AgentState.Offline, null, null, null, 0, time.GetElapsedTime(started));
             await Task.Delay(NetworkPoll, time, ct);
@@ -52,6 +50,7 @@ public sealed class AgentCheckRunner(IRemoteReader remote, INetworkProbe probe, 
             bool CanRetry() => !userInitiated && attempt <= Backoff.Count && time.GetElapsedTime(started) + Backoff[attempt - 1] <= budget;
             try
             {
+                if (remote is SharePointReader http) http.RetryWaitBudget = budget - time.GetElapsedTime(started);
                 var outcome = await new DiffService(remote).CheckAsync(site, root, progress, ct);
                 var included = outcome.Libraries.Select(l => l.Title).ToHashSet();
                 bool partial = outcome.Scan.Issues.Any(i => TransientLibraryCodes.Contains(i.Code) && included.Contains(i.Path));

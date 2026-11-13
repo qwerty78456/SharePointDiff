@@ -5,7 +5,11 @@ using Microsoft.Identity.Client.Extensions.Msal;
 
 namespace SharePointDiff.Core;
 
-public interface ITokenProvider { Task<string> GetAsync(string resource, CancellationToken ct, bool refresh = false); }
+public interface ITokenProvider
+{
+    Task<string> GetAsync(string resource, CancellationToken ct, bool refresh = false);
+    string? CacheIdentity => null;
+}
 
 /// <summary>Delegated sign-in through the system browser. With a cache directory the MSAL token cache is persisted,
 /// DPAPI-encrypted for the current Windows user, unless a token turns out to carry write scopes.</summary>
@@ -16,6 +20,7 @@ public sealed class BrowserAuthentication : ITokenProvider
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly bool selectAccount;
     private readonly string? cacheDirectory;
+    private readonly string profileBinding;
     private MsalCacheHelper? cache;
     private bool cacheReady;
     private IAccount? account;
@@ -26,6 +31,9 @@ public sealed class BrowserAuthentication : ITokenProvider
     public IReadOnlyList<TokenPermissionReport> PermissionReports => permissions.Values.OrderBy(p => p.Resource, StringComparer.OrdinalIgnoreCase).ToArray();
     private static string ResourceKey(string resource) => resource.TrimEnd('/');
     public string? AccountName => account?.Username;
+    public string? CacheIdentity => account?.HomeAccountId?.Identifier is not { } id ? null :
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(profileBinding + "|" + id + "|" +
+            string.Join('|', PermissionReports.Select(p => p.Resource + ":" + string.Join(',', p.GrantedScopes))))));
     /// <summary>The encrypted cache file, or null when nothing is persisted.</summary>
     public string? CacheFilePath { get; }
     /// <summary>A token that is not provably read-only was seen: the cache file was removed and tokens stay in memory for this process.</summary>
@@ -37,6 +45,7 @@ public sealed class BrowserAuthentication : ITokenProvider
     public BrowserAuthentication(ConnectionProfile profile, bool selectAccount = true, string? cacheDirectory = null, IMsalHttpClientFactory? http = null)
     {
         this.selectAccount = selectAccount;
+        profileBinding = profile.TenantId + "|" + profile.ClientId;
         if (!Guid.TryParse(profile.ClientId, out _) || string.IsNullOrWhiteSpace(profile.TenantId) ||
             profile.TenantId.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '.' or '-')))
             throw new OperationException("InvalidProfile");
@@ -172,6 +181,7 @@ public sealed class BrowserAuthentication : ITokenProvider
     }
     private sealed class NonInteractive(BrowserAuthentication owner) : ITokenProvider
     {
+        public string? CacheIdentity => owner.CacheIdentity;
         public Task<string> GetAsync(string resource, CancellationToken ct, bool refresh = false) => owner.GetCoreAsync(resource, ct, refresh, false);
     }
 }

@@ -7,7 +7,7 @@ using System.Text.Json;
 
 namespace SharePointDiff.Core;
 
-public sealed class SharePointReader : IRemoteReader, IDisposable
+public sealed partial class SharePointReader : IRemoteReader, IDisposable
 {
     private const string Graph = "https://graph.microsoft.com";
     private readonly ITokenProvider tokens;
@@ -86,7 +86,7 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
                 string body = await response.Content.ReadAsStringAsync(ct);
                 string requestId = response.Headers.TryGetValues("request-id", out var ids) ? string.Join(',', ids) : "—";
                 response.Dispose();
-                throw new OperationException(status == 403 ? "AccessDenied" : status == 404 ? "RemoteMissing" : status is 429 or >= 500 ? "ServiceUnavailable" : "HttpError", url,
+                throw new OperationException(status == 403 ? "AccessDenied" : status == 404 ? "RemoteMissing" : status == 410 && new Uri(url).AbsolutePath.Contains("/delta", StringComparison.Ordinal) ? "DeltaExpired" : status is 429 or >= 500 ? "ServiceUnavailable" : "HttpError", new Uri(url).GetLeftPart(UriPartial.Path),
                     new HttpRequestException($"HTTP {status}; request-id: {requestId}; response: {body[..Math.Min(body.Length, 8000)]}"));
             }
             return response;
@@ -127,13 +127,20 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
         var uri = SafePaths.SiteUri(siteUrl);
         var site = await GetAsync($"{Graph}/v1.0/sites/{uri.Host}:{uri.AbsolutePath}", ct);
         string siteId = Text(site, "id") ?? throw new OperationException("InvalidSite");
+        siteIds[siteUrl] = siteId;
         var lists = await PagesAsync($"{uri}/_api/web/lists?$select=Id,Title,Hidden,BaseTemplate,ItemCount,RootFolder/ServerRelativeUrl&$expand=RootFolder", ct);
+        // Test/custom token providers without a stable account identity remain on the uncached conservative path.
+        var drives = tokens.CacheIdentity == null ? [] : await PagesAsync($"{Graph}/v1.0/sites/{siteId}/drives?$select=id,sharepointIds", ct);
+        var driveIds = drives.Where(d => d.TryGetProperty("sharepointIds", out var ids) && Text(ids, "listId") != null)
+            .GroupBy(d => LibrarySelectionStore.Id(Text(d.GetProperty("sharepointIds"), "listId")!))
+            .Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => Text(g.First(), "id")!);
         var result = new List<LibraryInfo>();
         var used = new HashSet<string>();
         foreach (var list in lists.Where(x => !x.GetProperty("Hidden").GetBoolean() && x.GetProperty("BaseTemplate").GetInt32() == 101))
         {
             string id = Text(list, "Id")!, title = Text(list, "Title")!;
-            var drive = await GetAsync($"{Graph}/v1.0/sites/{siteId}/lists/{id}/drive?$select=id", ct);
+            string driveId = driveIds.TryGetValue(LibrarySelectionStore.Id(id), out var mapped) ? mapped :
+                Text(await GetAsync($"{Graph}/v1.0/sites/{siteId}/lists/{id}/drive?$select=id", ct), "id")!;
             string rootUrl = list.GetProperty("RootFolder").GetProperty("ServerRelativeUrl").GetString()!;
             string leaf = Uri.UnescapeDataString(rootUrl.TrimEnd('/').Split('/').Last());
             // Built-in display names vary with the account's language; keep the mirror mapping stable.
@@ -141,7 +148,7 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
             string folder = mappings.TryGetValue(id, out var saved) ? saved : defaultFolder;
             SafePaths.Parts(folder);
             if (folder.Contains('/') || folder.Contains('\\') || !used.Add(SafePaths.Key(folder))) throw new OperationException("PathCollision", folder);
-            result.Add(new(id, Text(drive, "id")!, title, rootUrl, folder, list.GetProperty("ItemCount").GetInt32()));
+            result.Add(new(id, driveId, title, rootUrl, folder, list.GetProperty("ItemCount").GetInt32()));
         }
         return result;
     }
@@ -155,7 +162,8 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
         finally { if (task.IsFaulted || task.IsCanceled) columns.TryRemove(new KeyValuePair<string, Lazy<Task<JsonElement>>>(k, entry)); }
     }
     private async Task<JsonElement> FetchColumnsAsync(string site, string library, CancellationToken ct) =>
-        JsonSerializer.SerializeToElement(await PagesAsync($"{site}/_api/web/lists(guid'{library}')/fields?$select=Id,InternalName,Title,TypeAsString,Hidden,ReadOnlyField,FromBaseType,EntityPropertyName", ct));
+        JsonSerializer.SerializeToElement((await PagesAsync($"{site}/_api/web/lists(guid'{library}')/fields?$select=Id,InternalName,Title,TypeAsString,Hidden,ReadOnlyField,FromBaseType,EntityPropertyName", ct))
+            .OrderBy(c => Text(c, "Id") ?? Text(c, "InternalName"), StringComparer.Ordinal));
     private static string MetadataSelect(JsonElement schema)
     {
         var properties = schema.EnumerateArray().Where(c => !c.GetProperty("Hidden").GetBoolean() && !c.GetProperty("ReadOnlyField").GetBoolean() && !c.GetProperty("FromBaseType").GetBoolean())
@@ -269,6 +277,22 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
                 if (SafePaths.Key(actual.TrimStart('/')) != SafePaths.Key(expected)) throw new OperationException("RemoteChanged", file.RelativePath);
             }
         }
+        else
+        {
+            var names = new List<string> { Text(row, "name")! }; var seen = new HashSet<string>();
+            string? parentId = row.TryGetProperty("parentReference", out var reference) ? Text(reference, "id") : null;
+            bool rootSeen = false;
+            while (parentId != null && seen.Add(parentId) && seen.Count <= 256)
+            {
+                var ancestor = await GetAsync($"{Graph}/v1.0/drives/{file.DriveId}/items/{parentId}?$select=id,name,parentReference,root", ct);
+                if (Has(ancestor, "root")) { rootSeen = true; break; }
+                names.Add(Text(ancestor, "name") ?? throw new OperationException("RemoteChanged", file.RelativePath));
+                parentId = ancestor.TryGetProperty("parentReference", out var nextParent) ? Text(nextParent, "id") : null;
+            }
+            names.Reverse();
+            if (!rootSeen || SafePaths.Key(string.Join('/', names)) != SafePaths.Key(file.RelativePath[(file.RelativePath.IndexOf('/') + 1)..]))
+                throw new OperationException("RemoteChanged", file.RelativePath);
+        }
         return ToFile(file.SiteUrl, file.LibraryId, file.DriveId, file.RelativePath, row, file.Metadata);
     }
     public async Task<RemoteFile> RefreshAsync(RemoteFile file, CancellationToken ct)
@@ -344,6 +368,7 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
     }
     private async Task<HttpResponseMessage> SendContentAsync(Uri location, long offset, RemoteFile file, CancellationToken ct)
     {
+        int redirects = 0;
         for (int attempt = 0; ; attempt++)
         {
             await cooldown.WaitAsync(location, Time, RetryWaitBudget, ct);
@@ -356,6 +381,14 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
                 try { IoMetrics.Add("Network.ContentRequests"); response = await content.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, deadline.Token); }
                 catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new OperationException("RequestTimeout", file.RelativePath, ex); }
                 catch (HttpRequestException ex) when (!ct.IsCancellationRequested) { throw new OperationException("DownloadInterrupted", file.RelativePath, ex); }
+            }
+            if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308)
+            {
+                if (++redirects > 5 || response.Headers.Location is not { } next) { response.Dispose(); throw new OperationException("InvalidDownload", file.RelativePath); }
+                var redirected = new Uri(location, next);
+                response.Dispose();
+                if (redirected.Scheme != "https" || redirected.UserInfo.Length != 0 || redirected.Port != 443) throw new OperationException("InvalidDownload", file.RelativePath);
+                location = redirected; continue;
             }
             if (((int)response.StatusCode == 429 || (int)response.StatusCode >= 500) && attempt < 5)
             {

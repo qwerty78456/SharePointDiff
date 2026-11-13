@@ -20,6 +20,8 @@ public sealed class SyncEngine(IRemoteReader remote)
         var drive = new DriveInfo(Path.GetPathRoot(scan.LocalRoot)!);
         if (drive.AvailableFreeSpace < required) throw new OperationException("DiskFull");
         await using var manifest = await ManifestSession.OpenAsync(workspace, ct);
+        try
+        {
         await manifest.ReserveAsync(run, plan.Items.Count, ct);
         await remote.PrepareApplyAsync(plan.Items.Select(w => w.Entry.Remote!).ToArray(), ct);
         // Backup order comes from a counter kept under the lock, never from the wall clock.
@@ -64,7 +66,8 @@ public sealed class SyncEngine(IRemoteReader remote)
                 {
                     result = await FailAsync(item, ex, ex is OperationException op ? op.Code : ex is IOException or UnauthorizedAccessException ? "FileIoError" : "TransferFailed");
                     // Without a token every remaining file would fail the same way: record it once and stop the run.
-                    if (ex is OperationException { Code: "SignInRequired" } && Interlocked.CompareExchange(ref stopReason, "SignInRequired", null) == null) stopOnFault.Cancel();
+                    if (ex is OperationException { Code: "SignInRequired" or "ManifestWriteFailed" or "MetadataStoreCorrupt" } stop &&
+                        Interlocked.CompareExchange(ref stopReason, stop.Code, null) == null) stopOnFault.Cancel();
                 }
                 results.Add(result);
                 progress?.Report(new("Applying", Interlocked.Increment(ref done), plan.Items.Count, item.Entry.RelativePath));
@@ -104,6 +107,8 @@ public sealed class SyncEngine(IRemoteReader remote)
         if (!ct.IsCancellationRequested && stopReason == null) report = report with { Pruned = await Retention.PruneAsync(workspace, run, scan, installed: installedSnapshot) };
         await JsonFiles.WriteAsync(Path.Combine(run, "io.json"), measurements.Snapshot());
         return report with { Statistics = measurements.Snapshot() };
+        }
+        catch (Exception ex) { manifest.PrimaryFailure = ex; throw; }
     }
     private async Task<TransferResult> TransferOneAsync(Workspace workspace, string run, WorkItem work,
         ConcurrentDictionary<string, SemaphoreSlim> locks, Func<long> nextSequence, ManifestSession manifest,

@@ -241,9 +241,9 @@ internal sealed class TrayAgent : IDisposable
         {
             if ((app as App)?.IdleChecks is { } idle) await idle.PauseAsync();
             EnsureSession();
-            var profile = settings!.Profiles[settings.SelectedProfile];
-            var runner = new AgentCheckRunner(reader!, new HttpNetworkProbe(profile.TenantId, probeClient), TimeProvider.System);
-            var progress = Progress(); string site = settings.SiteUrl, root = settings.LocalRoot;
+            var runner = new AgentCheckRunner(reader!, new NetworkAvailabilityProbe(), TimeProvider.System);
+            var currentSettings = settings ?? throw new OperationException("AgentNotReady", SettingsStore.PathName);
+            var progress = Progress(); string site = currentSettings.SiteUrl, root = currentSettings.LocalRoot;
             SetTooltip(L["TrayCheckingStart"]);
             // Background priority only while nobody is working in the main window.
             if (!userInitiated && !app.Windows.OfType<MainWindow>().Any()) background = new ProcessMode();

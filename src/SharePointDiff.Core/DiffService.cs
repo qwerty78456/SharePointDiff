@@ -15,11 +15,11 @@ public sealed partial class DiffService(IRemoteReader remote)
         using var measurements = IoMetrics.Begin("Scan");
         var workspace = new Workspace(site, root);
         using var gate = WorkspaceLock.Acquire(workspace);
-        var inventory = await remote.GetInventoryAsync(site, libraries, progress, ct);
+        options ??= new();
+        var inventory = await remote.GetInventoryAsync(site, libraries, progress, ct, new(workspace.DataRoot, options.ReadAllRemote));
         await using var manifest = await ManifestSession.OpenAsync(workspace, ct);
         var issues = inventory.Issues.ToList();
         issues.AddRange(manifest.RecoveryIssues);
-        options ??= new();
         var hashes = LocalHashCache.Load(workspace); issues.AddRange(hashes.Issues);
         var local = new ConcurrentDictionary<string, LocalFile>();
         var collisions = new ConcurrentDictionary<string, byte>();
@@ -115,8 +115,9 @@ public sealed partial class DiffService(IRemoteReader remote)
         foreach (var issue in issues.Where(i => i.Code is "LocalReadFailed" or "LinkBlocked" or "FileChanged" or "StaleInstallTemp"))
             if (!entries.Any(e => SafePaths.Key(e.RelativePath) == SafePaths.Key(issue.Path)))
                 entries.Add(new() { RelativePath = issue.Path, Status = DiffStatus.Error, Issue = issue });
-        var result = new ScanResult(site, root, entries.OrderBy(e => e.RelativePath, StringComparer.OrdinalIgnoreCase).ToArray(), inventory.Folders, issues, DateTimeOffset.Now, libraries);
-        await JsonFiles.WriteAsync(Path.Combine(workspace.DataRoot, "remote-snapshot.json"), inventory, ct);
+        var result = new ScanResult(site, root, entries.OrderBy(e => e.RelativePath, StringComparer.OrdinalIgnoreCase).ToArray(), inventory.Folders, issues, DateTimeOffset.Now, libraries, RemoteReads: inventory.Reads);
+        string snapshot = Path.Combine(workspace.DataRoot, "remote-snapshot.json");
+        if (inventory.SnapshotChanged || !File.Exists(snapshot)) await JsonFiles.WriteAsync(snapshot, inventory, ct);
         if (report) await ReportWriter.WriteScanAsync(workspace, result, ct);
         await manifest.ObserveMatchesAsync(result.Entries.Where(e => e.Status == DiffStatus.Match), ct);
         await manifest.FlushAsync();

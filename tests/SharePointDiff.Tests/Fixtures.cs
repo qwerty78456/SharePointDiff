@@ -92,8 +92,10 @@ public sealed class FakeRemote : IRemoteReader
         if (OnDownloadAsync != null) await OnDownloadAsync(file, ct);
         ct.ThrowIfCancellationRequested(); var bytes = Content[file.ItemId].ToArray(); if (Corrupt && bytes.Length > 0) bytes[0] ^= 255;
         await File.WriteAllBytesAsync(partial, bytes, ct); Bytes += bytes.Length;
+        IoMetrics.Add("Content.WriteBytes", bytes.Length); IoMetrics.Add("Network.FilePayloadBytes", bytes.Length);
         if (ChangeAfterDownload) Files[file.ItemId] = file with { ETag = "changed" };
-        return new(bytes.Length);
+        var quick = new QuickXorHasher(); quick.Append(bytes);
+        return new(bytes.Length, Hashes: new(bytes.Length, quick.Finish(), Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))));
     }
 }
 /// <summary>Records progress synchronously (Progress&lt;T&gt; posts asynchronously and would make assertions racy).</summary>

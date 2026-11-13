@@ -99,6 +99,7 @@
       <CheckBox IsChecked="{Binding IdleVerification}" Margin="0,0,0,8"><TextBlock Text="{Binding L[IdleVerification]}" TextWrapping="Wrap" MaxWidth="300" /></CheckBox>
      </WrapPanel>
      <TextBlock Text="{Binding L[SavedHashHint]}" TextWrapping="Wrap" Foreground="#64748B" />
+     <TextBlock Text="{Binding RemoteReadSummary}" TextWrapping="Wrap" Foreground="#64748B" Margin="0,6,0,0" />
      <TextBlock Text="{Binding IdleInfo}" TextWrapping="Wrap" Foreground="#64748B" Margin="0,6,0,0" />
     </StackPanel>
    </Expander>

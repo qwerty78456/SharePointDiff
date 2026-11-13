@@ -24,6 +24,11 @@ internal sealed class SchemaStorage : IDisposable
         }
         return new(null);
     }
+    internal static JsonElement ReadSchema(string path, string id)
+    {
+        using var storage = For(path);
+        return storage.Load(id);
+    }
     internal static string Hash(JsonElement schema)
     {
         using var bytes = new MemoryStream();

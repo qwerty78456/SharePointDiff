@@ -58,7 +58,9 @@ public sealed class AgentRunnerTests
         Assert.Equal(AgentState.Offline, r.State); Assert.Equal(TimeSpan.FromMinutes(15), r.NetworkWait); Assert.Equal(61, probe.Calls);
         var manual = new Probe(_ => false);
         r = await DriveAsync(time, new AgentCheckRunner(new FakeRemote(), manual, time).RunAsync(Fixture.Site, f.Root, true, null, default), TimeSpan.FromSeconds(15));
-        Assert.Equal(AgentState.Offline, r.State); Assert.Equal(3, manual.Calls); Assert.Equal(TimeSpan.FromSeconds(30), r.NetworkWait);
+        // A manual request goes straight to the actual check even if the interface hint says offline.
+        Assert.Equal((AgentState.NotConfigured, "AgentNotReady"), (r.State, r.Code));
+        Assert.Equal(0, manual.Calls); Assert.Equal(TimeSpan.Zero, r.NetworkWait);
         // Online on the fourth probe: the check runs (and reports that this mirror was never compared).
         var late = new Probe(n => n >= 4);
         r = await DriveAsync(time, new AgentCheckRunner(new FakeRemote(), late, time).RunAsync(Fixture.Site, f.Root, false, null, default), TimeSpan.FromSeconds(15));

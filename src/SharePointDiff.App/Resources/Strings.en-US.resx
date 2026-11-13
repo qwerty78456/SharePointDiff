@@ -436,4 +436,7 @@ Basic sign-in scopes may accompany them: openid, profile, email, offline_access 
   <data name="IdleChecked" xml:space="preserve"><value>Last idle check: {0:N0} blocks, {1} read.</value></data>
   <data name="IdleCheckHint" xml:space="preserve"><value>Starts after 5 minutes idle, up to 2% of data per day and at most 1 GiB; small folders round to an 8 MiB block.</value></data>
   <data name="IdlePaused" xml:space="preserve"><value>Idle checks are paused. Toggle the idle-check option off and on to resume.</value></data>
+  <data name="ErrorDeltaExpired" xml:space="preserve"><value>SharePoint no longer accepts the saved delta cursor. A full inventory is required.</value></data>
+  <data name="ErrorInvalidDeltaLink" xml:space="preserve"><value>SharePoint returned an invalid paging or delta URL. The request stopped before credentials could be sent to an unexpected endpoint.</value></data>
+  <data name="RemoteReadSummary" xml:space="preserve"><value>Last full inventory read: {0} · No scheduled full reads.</value></data>
 </root>
