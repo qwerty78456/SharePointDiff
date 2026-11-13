@@ -1,5 +1,48 @@
 # Verification / Báo cáo kiểm chứng
 
+## Bản tối ưu 1.2.0 — 13/11/2026
+
+Mã nguồn mới được kiểm tra trên Windows x64, .NET SDK 10.0.302. Kết quả dưới đây tách riêng thử tự động, phép đo trên dữ liệu lưu sẵn và thử site thật.
+
+| Nội dung | Kết quả / giới hạn |
+|---|---|
+| Kiểm thử tự động | **179/179 đạt**, gồm các kiểm thử cũ và ca mới cho nén HTTP, delta hai nguồn, bộ nhớ hash, ghi đè và phục hồi |
+| Build Release | **0 cảnh báo, 0 lỗi** |
+| Thư mục phẳng 3.000 tệp | 2 lượt duyệt: thư mục gốc và thư mục tài liệu; không duyệt lại thư mục theo từng tệp SharePoint |
+| Apply 120 tệp | Đọc manifest 1 lần; ghi checkpoint theo đợt; một sơ đồ cột dùng chung |
+| So sánh lại không đổi | Tệp có nhận dạng NTFS hợp lệ dùng hash đã lưu; đọc nội dung **0 byte** trong ca thử, không tính kiểm tra sâu riêng |
+| Bắt buộc tính lại | Đọc lại đúng nội dung; cập nhật ngày tính hash thật; kiểm tra nền dùng 1 worker |
+| Tệp vừa bị sửa, giữ mtime / thay nguyên tử | Không dùng nhầm hash cũ; tính lại từ nội dung |
+| Hash lưu sai | Dù bước quan sát dùng hash lưu, kiểm tra nội dung trước ghi đè vẫn chặn thay tệp gốc |
+| Tải mới và thay tệp 65.537 byte | Apply đọc **6S**, ghi **3S**; Scan đọc **S**. Tổng **10S**. V1.1.1 khoảng **15S** theo đếm luồng mã, không phải phép đo thiết bị |
+| Dùng lại theo nhóm | Bản trên máy ở bất kỳ hàng được chọn nào có thể cấp dữ liệu cho cả nhóm; dự toán và thực hiện đều không tải nhóm đó khi bản nguồn hợp lệ |
+| Đổi tên đích đúng lúc thay | Bản thực tế bị thay được giữ, báo `CommitPathConflict`; không tự khôi phục đè lên tệp có thể vừa được sửa tiếp |
+| Kết thúc tiến trình cưỡng bức | **6/6 mốc đạt**: sau sao lưu, intent, thay tệp, xác minh, nhật ký hoàn tất và checkpoint. Giữ bản gốc, mở lại chỉ nhập bản ghi đã ghi bền |
+| JSON gzip, Brotli, deflate | Kiểm tra qua TCP cục bộ bằng handler thật của .NET; giải nén đúng. Luồng nội dung riêng không giải nén |
+| Delta | Không đổi: không gọi `/items`, không ghi lại snapshot lớn; metadata-only bắt qua list delta; đổi tên thư mục dựng lại đường dẫn con |
+| Lỗi delta | Token hết hạn, thiếu cha, trang rỗng, URL lạ, cột/metadata thiếu; tối đa một lượt đọc đầy đủ lại, không nhập trạng thái lỗi |
+| API list delta không hỗ trợ | Nhớ khả năng theo tài khoản/thư viện, tránh thử rồi đọc đầy đủ hai lần ở mọi lượt quét; lựa chọn đọc lại đầy đủ thử khả năng mới |
+| Kiểm tra khi máy rảnh | Đọc theo khối, giới hạn ngân sách, tạm dừng và vô hiệu hash khi không khớp; không đổi ngày hash toàn tệp |
+| WPF | Bốn lượt main/tray/fatal-main/fatal-tray đạt; 10.000 hàng có ảo hoá; đổi Việt–Anh và giữ lựa chọn; lọc/đổi ngôn ngữ/dừng được khi chạy công việc nền giả lập |
+| Hình ảnh giao diện | Đã xem ảnh hai ngôn ngữ, cửa sổ nhỏ và ảnh kết xuất ở tỷ lệ 100–200%. Chưa nghiệm thu chuyển qua lại nhiều màn hình có DPI vật lý khác nhau |
+| Cấu hình và dữ liệu thật | Bộ smoke không tạo settings/token cache và không thay mục khởi động hay thư mục dữ liệu thật |
+| Site thật với 1.2.0 | **Chưa hoàn tất**: phiên đăng nhập thử mới hết thời gian chờ trước khi nhận token; chưa có lượt kiểm kê/tải mới để tính là nghiệm thu thực tế |
+
+### Đo chuẩn hoá dữ liệu lưu sẵn
+
+Dùng một bản lưu kiểm kê riêng **2.472 tệp** đã có, không tải lại dữ liệu từ SharePoint. JSON cũ **161.088.906 byte**, JSON mới **24.533.570 byte**, cộng **86.382 byte** cho hai sơ đồ cột. Tổng mới **24.619.952 byte**, giảm khoảng **84,7% dung lượng JSON lưu trên đĩa**. Đọc lại đã đối chiếu từng trường gốc, giá trị hiển thị, sơ đồ, dữ liệu Graph, đường dẫn, dung lượng và hash; không đổi kiểu dữ liệu.
+
+Đây không phải phép đo giảm 84,7% data internet hoặc độ hao SSD. Bộ đếm ghi lượng đọc/ghi do ứng dụng yêu cầu; Windows có bộ đệm. Nén JSON không giảm tương ứng dung lượng tài liệu. Lượt Compare thủ công vẫn xuất báo cáo đầy đủ JSON/CSV; kiểm tra nền bỏ bộ báo cáo đó. Hash đã lưu và delta có thể dùng kết quả quan sát trước; trước ghi đè vẫn kiểm tra dữ liệu thật. Không dùng hard link hoặc bỏ đọc kiểm tra bản sao lưu, tệp tạm, tệp đã cài.
+
+### Chưa kiểm chứng
+
+- Không có nghiệm thu site thật mới cho delta và luồng cập nhật 1.2.0; kết quả thật của v1.1.0 bên dưới là lịch sử, không thay thế được.
+- Chưa thử cắt điện thật, lỗi bộ điều khiển SSD, hoặc rút mạng vật lý. Cưỡng bức kết thúc tiến trình không chứng minh mọi tình huống mất điện.
+- Chưa thử lại đăng xuất/đăng nhập Windows hoặc lưu đăng nhập bằng app Entra chỉ đọc trên tenant thật.
+- Chưa thử ổ FAT/SMB thật hoặc DPI vật lý nhiều màn hình; khi không đủ thông tin nhận dạng, mã đi theo nhánh tính lại hash.
+
+**English:** 1.2.0 passes 179 automated tests and the four isolated WPF/tray/fatal smoke runs. Six actual forced-process termination boundaries preserve originals and recover only durable commits. A private 2,472-file saved inventory shrank from 161,088,906 bytes to 24,619,952 bytes including shared schemas, with typed field-by-field roundtrip validation. A replacement fixture measures 10 payload lengths of logical Scan+Apply I/O versus approximately 15 from the prior code-path count. This is not a physical SSD or internet-bandwidth measurement. **New live SharePoint acceptance is still pending:** the browser sign-in timed out before obtaining a token. Physical power loss, physical network loss, real FAT/SMB and multi-monitor DPI transitions were not tested. Historical v1.1.0 live results below must not be presented as 1.2.0 results.
+
 ## Thử trên site thật ngày 12–13/11/2026
 
 Đã chạy đúng executable trong ZIP phát hành **v1.1.0**, đối chiếu SHA-256 với tệp trên GitHub. Dùng site người dùng chỉ định và thư mục thử riêng; không thay tài liệu dự án hoặc dữ liệu SharePoint.

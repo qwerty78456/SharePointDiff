@@ -68,7 +68,7 @@ Cấu hình mẫu có hai tenant ở [`samples/settings.example.json`](samples/s
 
 ### 4. So sánh
 
-Bấm **So sánh**. Bước này đọc danh sách và metadata SharePoint, tính lại QuickXorHash và SHA-256 của local; **không tải nội dung tệp SharePoint**.
+Bấm **So sánh**. Ứng dụng cập nhật danh sách và thông tin SharePoint, rồi đối chiếu bằng QuickXorHash và SHA-256. Từ bản **1.2.0**, hash trên máy được dùng lại khi thông tin nhận dạng tệp còn khớp; tệp mới hoặc đã đổi được đọc để tính hash. Bước này **không tải nội dung tệp SharePoint**.
 
 Ứng dụng chỉ đọc các thư mục local ứng với thư viện đã chọn cùng các tệp rời ở gốc; thư mục khác ở gốc (ví dụ thư mục sao lưu riêng của bạn) không bị đọc hay băm. Bản cùng hash trong phạm vi đó được tái dùng. Tệp trong thư viện không chọn không bị cập nhật. Tệp tạm `*.spdiff-<guid>.tmp` còn sót sau một lần bị ngắt được báo lỗi `StaleInstallTemp`, không bị so sánh hay tự xoá.
 
@@ -87,6 +87,27 @@ Nếu đăng nhập hết hạn giữa chừng, lượt So sánh dừng ngay tha
 QuickXorHash là hash đối chiếu của Microsoft, **không phải hash mật mã**. SHA-256 dùng để kiểm tra sao lưu và tệp vừa ghi. Hash không cho biết đoạn văn nào thay đổi; ứng dụng không mở Word/Excel/PDF để phân tích nội dung.
 
 Lọc tên/đường dẫn và trạng thái ở thanh công cụ. Chọn một hàng để xem metadata dễ đọc; mở **Hash & bản ghi gốc** để xem hash và JSON chi tiết. **Chọn đang hiển thị** chỉ thay đổi những hàng đang lọc và đủ điều kiện chọn.
+
+### 4.1. Giảm data và đọc/ghi từ bản 1.2.0
+
+Mở **Tùy chọn kiểm tra** dưới danh sách thư viện:
+
+| Lựa chọn | Cách dùng |
+|---|---|
+| Không tích hai ô đọc lại | Cách dùng hằng ngày: đọc các thay đổi SharePoint, dùng hash đã lưu cho tệp trên máy chưa đổi thông tin nhận dạng |
+| **Đọc lại toàn bộ tệp để kiểm tra** | Đọc nội dung trên máy để tính lại hash, kể cả tệp không đổi. Không tải nội dung từ SharePoint |
+| **Đọc lại toàn bộ danh sách và thông tin SharePoint** | Lấy lại toàn bộ danh sách và cột dữ liệu thay vì dùng mốc thay đổi đã lưu. Có thể tốn nhiều JSON, dù không tải tài liệu |
+| **Kiểm tra sâu khi máy rảnh** | Đọc từng phần khi ứng dụng còn mở và máy không thao tác trong 5 phút. Tạm dừng khi bạn dùng máy hoặc bắt đầu So sánh/Thực hiện |
+
+Hai ô đọc lại chỉ áp dụng cho lần **So sánh** kế tiếp và tự bỏ tích sau khi quét xong. Khi cần kiểm tra đầy đủ trước nghiệm thu, tích cả hai. Đổi ngôn ngữ không làm mất các lựa chọn.
+
+Trong ngăn **Thông tin tệp**, xem **Hash lấy từ đâu**, **Lần cuối đọc toàn bộ tệp để tính hash** và **Thông tin SharePoint được đọc lúc**. “Dùng hash đã lưu” không có nghĩa vừa đọc lại nội dung. Bộ nhớ hash dùng mã nhận dạng tệp, ổ đĩa, dung lượng và các thời điểm NTFS; thiếu thông tin hoặc có khác biệt thì tính lại. Đây là cách kiểm tra nhanh, không bảo đảm phát hiện ngay mọi dạng hỏng dữ liệu. Trước ghi đè và trước xoá bản sao lưu, ứng dụng vẫn kiểm tra nội dung thật.
+
+Kiểm tra khi máy rảnh dùng các khối 8 MiB, ưu tiên khối lâu chưa kiểm tra; ngân sách mỗi ngày là 2% dữ liệu đã lưu hash, tối đa 1 GiB. Thư mục nhỏ làm tròn lên tối thiểu một khối. Lần tính hash toàn tệp không bị đổi thành ngày mới chỉ vì đã kiểm tra một khối. **Dừng** cũng dừng lượt kiểm tra nền; tắt rồi bật lại tùy chọn để tiếp tục. Đóng ứng dụng thì không còn lượt kiểm tra này; không tạo thêm lịch Windows. `IdleVerification` trong cấu hình mặc định là `true`.
+
+Ứng dụng dùng mốc thay đổi của cả tệp và mục thư viện, gắn với tài khoản/site đang dùng. **Không tự đọc đầy đủ lại theo ngày hoặc tuần.** Tên người dùng, tên tham chiếu hoặc taxonomy có thể đổi ở nơi khác mà không xuất hiện trong mốc thay đổi của thư viện; khi cần làm mới toàn bộ chữ hiển thị, dùng ô đọc lại SharePoint. Trước cài đặt mỗi tệp, metadata vẫn được đọc mới. Nếu mốc cũ không dùng được hoặc kết quả thiếu nhất quán, chỉ thử đọc đầy đủ lại một lần cho mỗi thư viện trong lượt quét, rồi báo lỗi nếu vẫn chưa đủ. Dịch vụ không hỗ trợ delta thì dùng cách đọc đầy đủ.
+
+Số liệu ở cuối cửa sổ và `last-scan-io.json` / `runs/<run>/io.json` là số byte ứng dụng yêu cầu đọc/ghi, không phải số byte SSD thực sự xử lý. `Network.JsonDecodedBytes` là JSON sau giải nén; không được coi là data mạng. Dự toán tải tài liệu không bao gồm đăng nhập, JSON kiểm kê, header HTTP hoặc lần thử lại. Bản báo cáo đầy đủ của mỗi lượt So sánh vẫn có chi phí ghi JSON/CSV; lượt kiểm tra nền không xuất cả bộ báo cáo này.
 
 ### 5. Tải tệp thiếu và ghi đè
 
@@ -122,7 +143,12 @@ Mirror_SPDiff/<site-id-hash>/
   library-selection.json        # Thư viện đã thấy/đã chọn ở lần So sánh gần nhất (dùng cho kiểm tra nền)
   backup-sequence.json          # Bộ đếm thứ tự sao lưu
   remote-snapshot.json          # Metadata SharePoint ở lần quét
-  installed-manifest.json       # Metadata gắn với đúng hash bản local đã xác nhận
+  installed-manifest.json       # Phiên bản 2; cập nhật từ nhật ký hoàn tất
+  installed-manifest.json.v1.backup # Bản nguyên vẹn trước khi chuyển định dạng cũ
+  schemas/                      # Sơ đồ cột bất biến theo SHA-256; giữ cùng metadata
+  local-hash-cache.json          # Hash đã lưu và SHA-256 của từng khối kiểm tra sâu
+  remote-state/                 # Cây theo ID và các con trỏ delta nhỏ
+  last-scan-io.json, last-idle-check.json
   cache/                        # Bản tải hợp lệ và tệp .partial để chạy tiếp
   runs/<ngày-giờ-id>/
     scan.json, diff.csv, metadata.csv
@@ -130,7 +156,10 @@ Mirror_SPDiff/<site-id-hash>/
     backups/<cây đường dẫn cũ>   # Bản local trước khi ghi đè
     backup-meta/<id>.json        # Hash, nguồn gốc và số thứ tự của từng bản sao lưu
     prune-plan.json, pruned.json # Những gì quy tắc xoay vòng sắp xoá / đã xoá
-    intents/, committed/         # Dấu vết trước/sau thao tác ghi
+    intents/, committed/        # Dấu vết bền trước/sau thao tác ghi
+    replaced/                   # Bản bị thay thật sự, giữ khi có lỗi/xung đột
+    recovery-reviewed.json      # Kiểm tra lần cập nhật bị gián đoạn; không tự phục hồi đè tệp
+    io.json                     # Số đo đọc/ghi và yêu cầu mạng của lượt cập nhật
     results.json, results.csv
     remote-metadata.csv, summary.txt
     errors/                     # Lỗi cụ thể theo tệp
@@ -144,6 +173,8 @@ Quy tắc dọn (chỉ chạy cuối một lượt Thực hiện/Đồng bộ ho
 - **Sao lưu chứa chỉnh sửa local, không rõ nguồn gốc, hoặc không có hash SharePoint được giữ vĩnh viễn.** Sao lưu của lượt chưa hoàn tất hoặc lượt thay bị ngắt cũng được giữ.
 - Trước khi xoá, `prune-plan.json` ghi đầy đủ dấu vết (đường dẫn, hash, ItemId, ETag, WebUrl, ngày sửa); mỗi bản được băm lại và chỉ bị xoá khi khớp đúng bản ghi. `pruned.json` ghi kết quả.
 - **Cache:** giữ bản của các phiên bản đang cài (khôi phục được khi không có mạng nếu lỡ xoá tệp local); xoá bản của phiên bản đã bị thay, chỉ với thư viện được đọc đầy đủ ở lần quét đó. Tệp `.invalid_*` và tệp lạ không bị đụng tới.
+
+Từ 1.2.0, sơ đồ cột được tham chiếu qua `SchemaRef` đến `schemas/<sha256>.json`, không lặp trong từng tệp. Khi chuyển máy hoặc sao lưu thông tin, giữ toàn bộ thư mục `_SPDiff`, đặc biệt `schemas/`, nhật ký và bản sao lưu; không chép riêng manifest rồi xoá các sơ đồ. Dữ liệu v1.1.1 vẫn đọc được. Manifest ghi theo đợt 50 tệp hoặc 5 giây có thay đổi; bản ghi hoàn tất từng tệp luôn được ghi bền trước. Khi mở lại, ứng dụng nhập các bản ghi chưa gộp từ mọi lượt chạy liên quan.
 
 JSON giữ kiểu dữ liệu và các giá trị gốc; CSV metadata có tên nội bộ, tên hiển thị, loại, giá trị gốc và giá trị hiển thị của cột. Bao gồm lookup/người dùng, taxonomy và đa giá trị mà tài khoản đọc được. Cột lỗi hoặc thiếu không bị âm thầm bỏ qua.
 
@@ -231,7 +262,7 @@ Permission warnings list the actual granted scopes for Graph and SharePoint, the
 
 ### Compare and select actions
 
-**Compare** reads inventory/metadata and hashes local files in the selected library folders plus loose root files (other root folders are not read). It never downloads remote file content. A sign-in failure stops the scan at once. Leftover `*.spdiff-<guid>.tmp` files from an interrupted run are reported as `StaleInstallTemp`, never compared or deleted. The **Locally changed** filter lists differences whose local copy is not the last synced version. The statuses are Hash match, Missing locally, Different size/hash, Local only, Hash unverified and Error/conflict.
+**Compare** refreshes remote inventory/metadata and compares hashes in the selected library folders plus loose root files (other root folders are not read). Since **1.2.0**, unchanged NTFS identities can reuse saved local hashes; new, changed or unsupported files are read again. It never downloads remote file content. A sign-in failure stops the scan at once. Leftover `*.spdiff-<guid>.tmp` files from an interrupted run are reported as `StaleInstallTemp`, never compared or deleted. The **Locally changed** filter lists differences whose local copy is not the last synced version. The statuses are Hash match, Missing locally, Different size/hash, Local only, Hash unverified and Error/conflict.
 
 QuickXorHash plus size is used for SharePoint comparison; SHA-256 verifies backups and installed bytes. QuickXorHash is non-cryptographic. Equal size alone does not prove equal content. The tool does not open documents or explain textual changes.
 
@@ -259,6 +290,18 @@ Downloads are staged and checked against current remote metadata/hash. Local cha
 Full readable column values, schema, lookups, taxonomy and multivalues are saved separately as typed JSON and readable CSV. File bytes are not modified to embed metadata. `remote-snapshot.json` describes remote observations; `installed-manifest.json` associates metadata with verified local content, so skipped local differences are not labelled with the wrong remote version.
 
 Use **Reports** to find `results.csv`, backup locations, SHA-256 values, downloaded byte counts and per-file diagnostics. To restore, close the affected document and manually copy the verified backup to its original path after reviewing the report; check `pruned.json` if a version is missing. Backup paths can exceed 260 characters: use PowerShell 7 `Copy-Item -LiteralPath` or `robocopy` rather than Explorer.
+
+### Data and disk use in 1.2.0
+
+Open **Check options** below the library selection. **Read all local file contents again** forces a full local hash; **Read the full SharePoint inventory and metadata again** bypasses saved delta cursors. They apply to the next Compare only and reset afterwards. Select both for an audit. File details show the hash source, last full hash date and metadata observation date; reusing a saved hash does not mean contents were read now.
+
+Account-bound drive and list-item delta feeds detect changes. There is **no scheduled full remote refresh**. Lookup, taxonomy or user display values may change outside the library; use the full remote option when those labels need refreshing. Invalid cursors or inconsistent trees fall back to one full read per library per scan; unresolved errors do not become empty libraries. Services without list delta use full inventory instead. Every installation still obtains fresh metadata and checks the current remote version.
+
+**Check file contents while the computer is idle** defaults to on (`IdleVerification: true`). It runs only while the app is open, after 5 minutes without input, using 8 MiB SHA-256 blocks. The daily budget is 2% of cached data, at most 1 GiB, rounded to a minimum block for small folders. It pauses for user activity or foreground operations, and never refreshes the full-hash date merely after checking a block. Stop pauses it; toggle the option off/on to resume. No extra scheduled task is registered. Saved identities are an optimization, not an absolute integrity proof; replacement and backup deletion still verify actual bytes.
+
+The footer and I/O JSON files report **logical application I/O**, not physical SSD traffic. `Network.JsonDecodedBytes` counts decompressed JSON, not wire bytes. Download estimates exclude authentication, inventory JSON, HTTP overhead and retries. Manual Compare still writes its complete JSON/CSV reports; the logon check omits that report set.
+
+Schemas are stored once in `schemas/<sha256>.json` and referenced by `SchemaRef`. Keep the whole `_SPDiff` tree when moving metadata. The v2 manifest checkpoints after 50 updates or 5 seconds with changes, after durable per-file commit journals. Unmerged commits from all relevant runs are replayed on open; interrupted intents are inspected, never blindly restored over user files. Legacy manifests are preserved byte-for-byte as `.v1.backup` before migration. A raced replacement keeps the actually displaced file in `replaced/` for review.
 
 ### Cancellation and failures
 
@@ -314,6 +357,8 @@ Các gói NuGet được ghim phiên bản. Bản publish gom ứng dụng thàn
 Có thể chạy `scripts\Publish.ps1` bằng PowerShell 7 để restore theo lockfile, build, kiểm thử và publish trong một lượt. Xem [báo cáo kiểm chứng / verification report](docs/Verification.md) để biết kết quả và phạm vi đã thử.
 
 Chạy `scripts\Package.ps1` bằng PowerShell 7 để build, chạy kiểm thử và tạo ZIP cùng SHA-256 trong `dist\v<version>`. Script chỉ đóng gói danh sách tệp phát hành xác định sẵn, kiểm tra số mục và hash executable trong ZIP; không tự đăng lên GitHub. `dist` không được đưa vào Git.
+
+Bộ kiểm thử có thêm tiến trình thử riêng `SharePointDiff.Probe`, tự kết thúc cưỡng bức tại sáu mốc sao lưu/ghi đè/nhật ký/checkpoint để thử mở lại; không đóng tiến trình của người dùng. Thử nén HTTP dùng máy chủ TCP cục bộ, không tốn data internet.
 
 Kiểm thử lõi dùng tệp giả lập, HTTP giả lập và đồng hồ giả: hash độc lập, Unicode, chọn từng tệp/tất cả, không tải khi quét, giữ local-only, backup, nguồn/local thay đổi, tải sai, metadata, huỷ/thử lại, HTTP Range và throttling. Phần mới gồm: tải tiếp khi treo hoặc đứt mạng, xoay vòng sao lưu và dọn cache, khoá thư mục, kiểm tra nền, và cache đăng nhập DPAPI cùng chặn token có quyền ghi. Không ghi lên SharePoint hoặc hồ sơ dự án thật.
 

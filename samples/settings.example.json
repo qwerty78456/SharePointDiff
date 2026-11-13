@@ -5,6 +5,7 @@
   "SelectedProfile": 0,
   "StartWithWindows": false,
   "AgentDelaySeconds": 60,
+  "IdleVerification": true,
   "Profiles": [
     {
       "Name": "Contoso",
