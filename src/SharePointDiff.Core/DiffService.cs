@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace SharePointDiff.Core;
 
 public sealed partial class DiffService(IRemoteReader remote)
@@ -7,7 +9,7 @@ public sealed partial class DiffService(IRemoteReader remote)
     public static string NormalizeSite(string site) => SafePaths.SiteUri(site).ToString().TrimEnd('/');
     /// <param name="report">False skips the runs/&lt;ts&gt;/scan report (used by the logon check); the snapshot and manifest matches are still written.</param>
     public async Task<ScanResult> ScanAsync(string site, string root, IReadOnlyList<LibraryInfo> libraries,
-        IProgress<OperationProgress>? progress, CancellationToken ct, bool report = true)
+        IProgress<OperationProgress>? progress, CancellationToken ct, bool report = true, ScanOptions? options = null)
     {
         site = NormalizeSite(site); root = Path.GetFullPath(root);
         using var measurements = IoMetrics.Begin("Scan");
@@ -17,29 +19,48 @@ public sealed partial class DiffService(IRemoteReader remote)
         await using var manifest = await ManifestSession.OpenAsync(workspace, ct);
         var issues = inventory.Issues.ToList();
         issues.AddRange(manifest.RecoveryIssues);
-        var local = new Dictionary<string, LocalFile>();
-        var collisions = new HashSet<string>();
+        options ??= new();
+        var hashes = LocalHashCache.Load(workspace); issues.AddRange(hashes.Issues);
+        var local = new ConcurrentDictionary<string, LocalFile>();
+        var collisions = new ConcurrentDictionary<string, byte>();
+        var hashingIssues = new ConcurrentQueue<OperationIssue>();
         var libraryFolders = libraries.Select(l => SafePaths.Key(l.LocalFolder)).ToHashSet();
         var tree = await Task.Run(() => new DirectorySnapshot(root, libraryFolders, ct), ct);
         var paths = tree.Files;
         issues.AddRange(tree.Issues);
         int done = 0;
-        foreach (string path in paths)
+        int parallelism = options.Background ? 1 : NativeFileInfo.ManualHashParallelism(root);
+        IoMetrics.Add("Hash.Workers", parallelism);
+        await Parallel.ForEachAsync(paths, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct }, async (path, token) =>
         {
-            ct.ThrowIfCancellationRequested();
+            token.ThrowIfCancellationRequested();
             string rel = Path.GetRelativePath(root, path).Replace('\\', '/'), k = SafePaths.Key(rel);
             try
             {
-                var h = await FileHashing.ComputeAsync(path, ct, FileShare.ReadWrite | FileShare.Delete);
-                if (!local.TryAdd(k, new(rel, path, h, File.GetLastWriteTimeUtc(path)))) { collisions.Add(k); issues.Add(new("PathCollision", rel)); }
+                var file = await hashes.ReadAsync(path, options.RehashAllLocal || manifest.RecoveryIssues.Any(i => SafePaths.Key(i.Path) == k), token);
+                if (!local.TryAdd(k, file)) { collisions.TryAdd(k, 0); hashingIssues.Enqueue(new("PathCollision", rel)); }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) when (ex is OperationException or IOException or UnauthorizedAccessException)
-            { issues.Add(new(ex is OperationException op ? op.Code : "LocalReadFailed", rel, ex.ToString())); }
-            progress?.Report(new("Hashing", ++done, paths.Count, rel));
+            { hashingIssues.Enqueue(new(ex is OperationException op ? op.Code : "LocalReadFailed", rel, ex.ToString())); }
+            progress?.Report(new("Hashing", Interlocked.Increment(ref done), paths.Count, rel));
+        });
+        issues.AddRange(hashingIssues);
+        var index = local.Values.Where(x => !collisions.ContainsKey(SafePaths.Key(x.RelativePath)))
+            .GroupBy(x => (x.Hashes.Size, x.Hashes.QuickXorHash)).ToDictionary(x => x.Key, x => new ReuseCandidate(x.First().FullPath, x.First().Hashes.Sha256));
+        foreach (var found in Retention.Records(workspace))
+        {
+            var record = found.Record;
+            if (record?.BackupPath == null || record.Hashes == null || record.Hashes.QuickXorHash.Length == 0 || !File.Exists(record.BackupPath)) continue;
+            try
+            {
+                SafePaths.Inside(Path.Combine(found.Run, "backups"), record.BackupPath);
+                if ((File.GetAttributes(record.BackupPath) & FileAttributes.ReparsePoint) != 0) continue;
+                index.TryAdd((record.Hashes.Size, record.Hashes.QuickXorHash), new(record.BackupPath, record.Hashes.Sha256));
+            }
+            catch (OperationException) { } // an invalid backup record is never a reuse candidate
         }
-        var index = local.Values.Where(x => !collisions.Contains(SafePaths.Key(x.RelativePath)))
-            .GroupBy(x => (x.Hashes.Size, x.Hashes.QuickXorHash)).ToDictionary(x => x.Key, x => x.First().FullPath);
+        var checkedCaches = new Dictionary<string, FileHashes>();
         var entries = new List<DiffEntry>();
         var remoteKeys = new HashSet<string>();
         foreach (var file in inventory.Files)
@@ -50,7 +71,7 @@ public sealed partial class DiffService(IRemoteReader remote)
             OperationIssue? problem = null;
             try { problem = tree.Validate(file.RelativePath); }
             catch (OperationException ex) { problem = new(ex.Code, file.RelativePath); }
-            if (collisions.Contains(k)) problem = new("PathCollision", file.RelativePath);
+            if (collisions.ContainsKey(k)) problem = new("PathCollision", file.RelativePath);
             // Unreadable files/directories must never be mistaken for an absent destination.
             var readError = issues.FirstOrDefault(i => i.Code is "LocalReadFailed" or "LinkBlocked" or "FileChanged" or "StaleInstallTemp" &&
                 (SafePaths.Key(i.Path) == k || k.StartsWith(SafePaths.Key(i.Path).TrimEnd('/') + "/", StringComparison.Ordinal)));
@@ -61,20 +82,21 @@ public sealed partial class DiffService(IRemoteReader remote)
                 string.IsNullOrEmpty(file.QuickXorHash) ? DiffStatus.Unverified :
                 a.Hashes.QuickXorHash == file.QuickXorHash ? DiffStatus.Match : DiffStatus.DifferentHash;
             string? reuse = null;
+            string? reuseSha = null;
             if (status is DiffStatus.MissingLocal or DiffStatus.DifferentHash or DiffStatus.DifferentSize && file.QuickXorHash is { Length: > 0 })
             {
-                if (index.TryGetValue((file.Size, file.QuickXorHash), out var found)) reuse = found;
+                if (index.TryGetValue((file.Size, file.QuickXorHash), out var found)) { reuse = found.Path; reuseSha = found.Sha256; }
                 else
                 {
                     string cache = workspace.CachePath(file);
                     if (File.Exists(cache))
                     {
-                        var h = await FileHashing.ComputeAsync(cache, ct);
-                        if (h.Size == file.Size && h.QuickXorHash == file.QuickXorHash) reuse = cache;
+                        if (!checkedCaches.TryGetValue(cache, out var h)) checkedCaches[cache] = h = await FileHashing.ComputeAsync(cache, ct);
+                        if (h.Size == file.Size && h.QuickXorHash == file.QuickXorHash) { reuse = cache; reuseSha = h.Sha256; }
                     }
                 }
             }
-            entries.Add(new() { RelativePath = file.RelativePath, Remote = file, Local = a, Status = status, ReusePath = reuse, Issue = problem });
+            entries.Add(new() { RelativePath = file.RelativePath, Remote = file, Local = a, Status = status, ReusePath = reuse, ReuseSha256 = reuseSha, Issue = problem });
         }
         var prefixes = libraries.Select(l => SafePaths.Key(l.LocalFolder) + "/").ToArray();
         var failed = libraries.Where(l => !inventory.Folders.Contains(l.LocalFolder)).Select(l => SafePaths.Key(l.LocalFolder) + "/").ToArray();
@@ -98,8 +120,9 @@ public sealed partial class DiffService(IRemoteReader remote)
         if (report) await ReportWriter.WriteScanAsync(workspace, result, ct);
         await manifest.ObserveMatchesAsync(result.Entries.Where(e => e.Status == DiffStatus.Match), ct);
         await manifest.FlushAsync();
+        await hashes.SaveAsync(ct);
         await JsonFiles.WriteAsync(Path.Combine(workspace.DataRoot, "last-scan-io.json"), measurements.Snapshot(), ct);
-        return result;
+        return result with { Statistics = measurements.Snapshot() };
     }
     /// <summary>Lists the site's document libraries with their stable local folder names and records the mapping.</summary>
     public async Task<IReadOnlyList<LibraryInfo>> ConnectAsync(string site, string root, CancellationToken ct)
@@ -126,7 +149,7 @@ public sealed partial class DiffService(IRemoteReader remote)
         var libraries = listed.Where(l => included.Contains(LibrarySelectionStore.Id(l.Id))).ToArray();
         var fresh = listed.Where(l => !known.Contains(LibrarySelectionStore.Id(l.Id))).ToArray();
         if (libraries.Length == 0) throw new OperationException("NoLibrariesSelected", root);
-        var scan = await ScanAsync(site, root, libraries, progress, ct, report: false);
+        var scan = await ScanAsync(site, root, libraries, progress, ct, report: false, options: new(Background: true));
         var workspace = new Workspace(site, root);
         var installed = await ManifestStore.ReadAllAsync(workspace, ct);
         string runs = Path.Combine(workspace.DataRoot, "runs");

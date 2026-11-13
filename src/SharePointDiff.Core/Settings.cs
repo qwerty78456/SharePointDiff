@@ -13,6 +13,7 @@ public sealed class UserSettings
     public bool StartWithWindows { get; set; }
     /// <summary>Seconds to wait after sign-in before the background check, 0–900.</summary>
     public int AgentDelaySeconds { get; set; } = 60;
+    public bool IdleVerification { get; set; } = true;
     /// <summary>Repairs values that older or hand-edited files may hold (null lists and strings, out-of-range numbers).</summary>
     public UserSettings Normalize()
     {

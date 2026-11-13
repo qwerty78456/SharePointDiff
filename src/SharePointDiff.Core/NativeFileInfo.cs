@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
+using System.Text;
 
 namespace SharePointDiff.Core;
 
@@ -23,6 +24,22 @@ internal static class NativeFileInfo
         return new(id.Volume, id.Low.ToString("x16") + id.High.ToString("x16"), standard.Length, basic.Creation, basic.Write, basic.Change);
     }
     public static bool SameObject(FileIdentity? a, FileIdentity? b) => a != null && b != null && a.VolumeSerial == b.VolumeSerial && a.FileId == b.FileId;
+    public static string? FinalPath(FileStream file)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        var text = new StringBuilder(512);
+        uint size = GetFinalPathNameByHandleW(file.SafeFileHandle, text, (uint)text.Capacity, 0);
+        if (size == 0) return null;
+        if (size >= text.Capacity)
+        {
+            if (size > 32768) return null;
+            text.EnsureCapacity((int)size + 1);
+            if (GetFinalPathNameByHandleW(file.SafeFileHandle, text, (uint)text.Capacity, 0) == 0) return null;
+        }
+        string path = text.ToString();
+        return path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase) ? @"\\" + path[8..] : path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..] : path;
+    }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder path, uint size, uint flags);
     public static bool SupportsCache(string path)
     {
         if (!OperatingSystem.IsWindows()) return false;

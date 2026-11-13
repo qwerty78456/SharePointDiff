@@ -56,3 +56,19 @@ public sealed class ViewModelProxy : Freezable
     public object? Data { get => GetValue(DataProperty); set => SetValue(DataProperty, value); }
     protected override Freezable CreateInstanceCore() => new ViewModelProxy();
 }
+
+/// <summary>Throttle before posting to WPF rather than filling its queue with discarded callbacks.</summary>
+internal sealed class ThrottledProgress(IProgress<OperationProgress> target) : IProgress<OperationProgress>
+{
+    private long last;
+    public void Report(OperationProgress value)
+    {
+        long now = Environment.TickCount64;
+        bool final = value.Total > 0 && value.Completed == value.Total;
+        long previous = Volatile.Read(ref last);
+        if (!final && now - previous < 120) return;
+        if (!final && Interlocked.CompareExchange(ref last, now, previous) != previous) return;
+        if (final) Interlocked.Exchange(ref last, now);
+        target.Report(value);
+    }
+}

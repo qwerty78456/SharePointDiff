@@ -98,7 +98,8 @@ public static class Retention
                 foreach (string file in Directory.EnumerateFiles(meta, "*.json", NoLinks))
                 {
                     try { found.Add(new(run, file, JsonFiles.Read<BackupRecord>(file), null)); }
-                    catch (JsonException ex) { found.Add(new(run, file, null, "unreadable: " + ex.Message)); }
+                    catch (Exception ex) when (ex is JsonException or OperationException { Code: "MetadataStoreCorrupt" })
+                    { found.Add(new(run, file, null, "unreadable: " + ex.Message)); }
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

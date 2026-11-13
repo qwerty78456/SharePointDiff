@@ -71,9 +71,14 @@ public sealed class MainViewModel : Observable, IDisposable
     private string error = "";
     private Func<string>? errorFormatter;
     private string errorDetail = "";
+    private bool rehashAllLocal, readAllRemote;
+    private IoStatistics? statistics;
+    private readonly IdleVerifier? idle;
     public MainViewModel(bool demo = false)
     {
         Demo = demo; settings = demo ? new() : SettingsStore.Load();
+        idle = demo ? null : (Application.Current as App)?.IdleChecks;
+        if (idle != null) idle.Changed += RefreshIdle;
         foreach (var p in settings.Profiles) Profiles.Add(p);
         siteUrl = settings.SiteUrl; localRoot = settings.LocalRoot; profileIndex = Profiles.Count > 0 ? Math.Clamp(settings.SelectedProfile, 0, Profiles.Count - 1) : -1;
         languageIndex = settings.Language == "en-US" ? 1 : 0; L.Switch(languageIndex == 1 ? "en-US" : "vi-VN");
@@ -82,7 +87,7 @@ public sealed class MainViewModel : Observable, IDisposable
         ForgetSignInCommand = new(() => RunAsync(ForgetSignInAsync), () => !Busy && !Demo && ProfileIndex >= 0 && ProfileIndex < Profiles.Count);
         ScanCommand = new(() => RunAsync(ScanAsync), () => !Busy && connected && Libraries.Any(x => x.Selected));
         ApplyCommand = new(() => RunAsync(ApplyAsync), () => !Busy && !Demo && scan != null && CurrentPlan.Items.Count > 0);
-        CancelCommand = new(() => cancellation?.Cancel(), () => Busy);
+        CancelCommand = new(() => { cancellation?.Cancel(); if (!Busy && idle != null) _ = idle.PauseAsync(user: true); }, () => Busy || idle?.Active == true);
         BrowseCommand = new(Browse, () => !Busy);
         AddProfileCommand = new(AddProfile, () => !Busy);
         SaveProfileCommand = new(SaveProfile, () => !Busy);
@@ -101,6 +106,20 @@ public sealed class MainViewModel : Observable, IDisposable
     public string Filter { get => filter; set { if (Set(ref filter, value)) FilesView.Refresh(); } }
     public bool Busy { get => busy; private set { Set(ref busy, value); Raise(nameof(NotBusy)); UpdateCommands(); } }
     public bool NotBusy => !Busy;
+    public bool RehashAllLocal { get => rehashAllLocal; set => Set(ref rehashAllLocal, value); }
+    public bool ReadAllRemote { get => readAllRemote; set => Set(ref readAllRemote, value); }
+    public bool IdleVerification { get => settings.IdleVerification; set { settings.IdleVerification = value; if (value) idle?.Resume(); else if (idle != null) _ = idle.PauseAsync(user: true); Persist(); Raise(); } }
+    public string HashSummary => L.Format("HashSummary", Rows.Count(r => r.Entry.Local?.HashBasis == HashBasis.Saved), Rows.Count(r => r.Entry.Local?.HashBasis == HashBasis.Fresh));
+    public string IoSummary => statistics == null ? "" : L.Format("IoSummary", FileRow.FormatBytes(statistics.Counters.GetValueOrDefault("Content.ReadBytes")),
+        FileRow.FormatBytes(statistics.Counters.GetValueOrDefault("Metadata.WriteBytes")), statistics.Counters.GetValueOrDefault("Network.GraphRequests") + statistics.Counters.GetValueOrDefault("Network.RestRequests"));
+    public string IdleInfo => idle?.LastError is { } issue ? L["Error" + issue.Code] + " " + issue.Path
+        : idle?.PausedByUser == true ? L["IdlePaused"] : idle?.Active == true ? L["IdleChecking"] : idle?.LastResult is { } result ? L.Format("IdleChecked", result.VerifiedBlocks, FileRow.FormatBytes(result.ReadBytes)) : L["IdleCheckHint"];
+    private void RefreshIdle()
+    {
+        Raise(nameof(IdleInfo)); CancelCommand.Update();
+        if (idle?.LastError?.Code == "HashCacheMismatch") scan = null;
+        ApplyCommand.Update();
+    }
     public bool ConnectionExpanded { get => connectionExpanded; set => Set(ref connectionExpanded, value); }
     public int LanguageIndex { get => languageIndex; set { if (Set(ref languageIndex, value)) { L.Switch(value == 1 ? "en-US" : "vi-VN"); Persist(); } } }
     public int ProfileIndex { get => profileIndex; set { if (Set(ref profileIndex, value)) { LoadProfileFields(); InvalidateConnection(); } } }
@@ -116,8 +135,15 @@ public sealed class MainViewModel : Observable, IDisposable
     {
         get
         {
-            if (SelectedRow?.Entry.Remote is not { } r) return [];
-            var m = r.Metadata; var rows = new List<MetadataDisplay>();
+            var rows = new List<MetadataDisplay>();
+            if (SelectedRow?.Entry.Local is { } local)
+            {
+                rows.Add(new(L["HashBasisLabel"], L[local.HashBasis == HashBasis.Saved ? "SavedHash" : "FreshHash"]));
+                rows.Add(new(L["LastHashedAt"], local.LastHashedAt?.ToLocalTime().ToString("g", L.Culture) ?? L["UnknownTime"]));
+            }
+            if (SelectedRow?.Entry.Remote is not { } r) return rows;
+            var m = r.Metadata;
+            rows.Add(new(L["MetadataReadAt"], m.ObservedAt?.ToLocalTime().ToString("g", L.Culture) ?? L["UnknownTime"]));
             foreach (var c in m.Columns.EnumerateArray())
             {
                 if (c.TryGetProperty("Hidden", out var hidden) && hidden.GetBoolean()) continue;
@@ -231,7 +257,9 @@ public sealed class MainViewModel : Observable, IDisposable
         if (reader == null) throw new OperationException("InvalidProfile");
         var selected = Libraries.Where(x => x.Selected).Select(x => x.Value).ToArray();
         string site = DiffService.NormalizeSite(SiteUrl), root = LocalRoot; var progress = CreateProgress();
-        scan = await Task.Run(() => new DiffService(reader).ScanAsync(site, root, selected, progress, ct), ct);
+        var options = new ScanOptions(RehashAllLocal, ReadAllRemote);
+        scan = await Task.Run(() => new DiffService(reader).ScanAsync(site, root, selected, progress, ct, options: options), ct);
+        statistics = scan.Statistics; RehashAllLocal = false; ReadAllRemote = false;
         var workspace = new Workspace(site, root);
         // A completed Compare is what the logon check reuses: which libraries exist and which are ticked.
         LibrarySelection? previous;
@@ -259,6 +287,7 @@ public sealed class MainViewModel : Observable, IDisposable
         // Clicking Apply after the explicit mode/selection and estimate is the user's authorization.
         var progress = CreateProgress();
         var result = await Task.Run(() => new SyncEngine(reader).ApplyAsync(scan, plan, progress, ct), ct);
+        statistics = result.Statistics;
         reportDirectory = result.RunDirectory;
         var completedResults = result.Results.Where(r => r.Status is "Verified" or "DownloadedUnverified").ToDictionary(r => SafePaths.Key(r.Path));
         var success = completedResults.Keys.ToHashSet();
@@ -293,18 +322,16 @@ public sealed class MainViewModel : Observable, IDisposable
     }
     private IProgress<OperationProgress> CreateProgress()
     {
-        long last = 0;
-        return new Progress<OperationProgress>(p =>
+        return new ThrottledProgress(new Progress<OperationProgress>(p =>
         {
-            long now = Environment.TickCount64; if (now - last < 120 && p.Completed != p.Total) return; last = now;
             SetStatus(p.Code, p.Completed, p.Total); ProgressPath = p.Path ?? "";
             if (p.TotalBytes > 0) { completed = (int)Math.Min(1000, 1000d * p.Bytes / p.TotalBytes); total = 1000; Raise(nameof(ProgressPercent)); }
-        });
+        }));
     }
     private async Task RunAsync(Func<CancellationToken, Task> action)
     {
         if (Busy) return; Busy = true; Error = ""; ErrorDetail = ""; cancellation = new(); completed = total = 0;
-        try { await action(cancellation.Token); }
+        try { if (idle != null) await idle.PauseAsync(); await action(cancellation.Token); }
         catch (OperationCanceledException) { SetStatus("Cancelled"); }
         catch (Exception ex) when (ex is OperationException or IOException or UnauthorizedAccessException or System.Net.Http.HttpRequestException)
         { SetError(ex); SetStatus("Failed"); }
@@ -321,7 +348,7 @@ public sealed class MainViewModel : Observable, IDisposable
         ErrorDetail = ErrorDetails.Format(ex, action, path, log);
     }
     private void SetStatus(string code, int done = 0, int count = 0) { statusCode = code; completed = done; total = count; Raise(nameof(StatusText)); Raise(nameof(ProgressPercent)); Raise(nameof(Indeterminate)); }
-    private void RefreshPlan() { if (bulkSelecting) return; Raise(nameof(Estimate)); Raise(nameof(Summary)); Raise(nameof(SummaryStats)); Raise(nameof(Details)); Raise(nameof(SelectedPath)); Raise(nameof(MetadataItems)); UpdateCommands(); }
+    private void RefreshPlan() { if (bulkSelecting) return; Raise(nameof(Estimate)); Raise(nameof(Summary)); Raise(nameof(SummaryStats)); Raise(nameof(HashSummary)); Raise(nameof(IoSummary)); Raise(nameof(Details)); Raise(nameof(SelectedPath)); Raise(nameof(MetadataItems)); Raise(nameof(IdleInfo)); UpdateCommands(); }
     private void RefreshLanguage() { foreach (var r in Rows) r.RefreshText(); FilesView.Refresh(); Raise(nameof(StatusText)); Raise(nameof(Error)); RefreshPlan(); RefreshStartup(); }
     // ---- Check at Windows sign-in -------------------------------------------------------------
     public RelayCommand UseThisCopyCommand { get; }
@@ -411,7 +438,7 @@ public sealed class MainViewModel : Observable, IDisposable
         if (!Demo) reportDirectory = Workspace.DataRootFor(scan.SiteUrl, scan.LocalRoot);
         SetStatus("ScanComplete", Rows.Count, Rows.Count); RefreshPlan(); RefreshStartup();
     }
-    public void Dispose() { cancellation?.Cancel(); reader?.Dispose(); }
+    public void Dispose() { if (idle != null) idle.Changed -= RefreshIdle; cancellation?.Cancel(); reader?.Dispose(); }
 }
 public sealed record SummaryStat(string Label, int Value, string Color);
 public sealed record MetadataDisplay(string Label, string Value);

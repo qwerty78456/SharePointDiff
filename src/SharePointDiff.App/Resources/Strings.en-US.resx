@@ -417,4 +417,23 @@ Basic sign-in scopes may accompany them: openid, profile, email, offline_access 
   <data name="ErrorManifestWriteFailed" xml:space="preserve"><value>Could not checkpoint the installed manifest. Completed-file journals remain available for recovery; see the path and cause in the details.</value></data>
   <data name="ErrorMetadataStoreCorrupt" xml:space="preserve"><value>Saved metadata is damaged, has a missing schema or uses an unsupported format. Updates stopped; see the affected file in the details.</value></data>
   <data name="ErrorCommitPathConflict" xml:space="preserve"><value>Another program changed the destination during installation. Related copies were preserved; review the paths in the details before restoring.</value></data>
+  <data name="ErrorHashCacheInvalid" xml:space="preserve"><value>Saved hashes are damaged. File contents will be read again; old hashes will not be used.</value></data>
+  <data name="ErrorHashCacheMismatch" xml:space="preserve"><value>The idle check found bytes that do not match the saved hash. Compare again before applying updates.</value></data>
+  <data name="CheckOptions" xml:space="preserve"><value>Check options</value></data>
+  <data name="RehashAllLocal" xml:space="preserve"><value>Read all local file contents again</value></data>
+  <data name="ReadAllRemote" xml:space="preserve"><value>Read the full SharePoint inventory and metadata again</value></data>
+  <data name="IdleVerification" xml:space="preserve"><value>Check file contents while the computer is idle</value></data>
+  <data name="SavedHashHint" xml:space="preserve"><value>Saved hashes are used when file identity still matches. The two full-read options apply to the next Compare only.</value></data>
+  <data name="HashSummary" xml:space="preserve"><value>Saved hashes: {0:N0} files · Freshly hashed: {1:N0} files</value></data>
+  <data name="IoSummary" xml:space="preserve"><value>Content read: {0} · Metadata written: {1} · API requests: {2:N0}</value></data>
+  <data name="HashBasisLabel" xml:space="preserve"><value>Hash source</value></data>
+  <data name="SavedHash" xml:space="preserve"><value>Saved hash</value></data>
+  <data name="FreshHash" xml:space="preserve"><value>Hash calculated from file contents</value></data>
+  <data name="LastHashedAt" xml:space="preserve"><value>Last full content hash</value></data>
+  <data name="MetadataReadAt" xml:space="preserve"><value>SharePoint metadata read at</value></data>
+  <data name="UnknownTime" xml:space="preserve"><value>Not recorded</value></data>
+  <data name="IdleChecking" xml:space="preserve"><value>Checking file blocks while idle. Pauses when you use the computer or start an operation.</value></data>
+  <data name="IdleChecked" xml:space="preserve"><value>Last idle check: {0:N0} blocks, {1} read.</value></data>
+  <data name="IdleCheckHint" xml:space="preserve"><value>Starts after 5 minutes idle, up to 2% of data per day and at most 1 GiB; small folders round to an 8 MiB block.</value></data>
+  <data name="IdlePaused" xml:space="preserve"><value>Idle checks are paused. Toggle the idle-check option off and on to resume.</value></data>
 </root>

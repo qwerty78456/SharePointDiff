@@ -417,4 +417,23 @@ Basic sign-in scopes may accompany them: openid, profile, email, offline_access 
   <data name="ErrorManifestWriteFailed" xml:space="preserve"><value>Không ghi được danh sách tệp đã cài. Các bản ghi hoàn tất vẫn được giữ để khôi phục; xem đường dẫn và nguyên nhân trong chi tiết.</value></data>
   <data name="ErrorMetadataStoreCorrupt" xml:space="preserve"><value>Thông tin đã lưu bị hỏng, thiếu sơ đồ cột hoặc có định dạng không hỗ trợ. Chưa tiếp tục cập nhật; xem tệp gây lỗi trong chi tiết.</value></data>
   <data name="ErrorCommitPathConflict" xml:space="preserve"><value>Có chương trình khác đổi tệp đích trong lúc cập nhật. Đã giữ các bản liên quan; xem đường dẫn trong chi tiết trước khi khôi phục.</value></data>
+  <data name="ErrorHashCacheInvalid" xml:space="preserve"><value>Bộ nhớ hash đã lưu bị hỏng. Sẽ đọc lại nội dung để tính hash; không dùng kết quả cũ.</value></data>
+  <data name="ErrorHashCacheMismatch" xml:space="preserve"><value>Kiểm tra khi máy rảnh phát hiện nội dung không khớp hash đã lưu. Cần so sánh lại trước khi cập nhật.</value></data>
+  <data name="CheckOptions" xml:space="preserve"><value>Tùy chọn kiểm tra</value></data>
+  <data name="RehashAllLocal" xml:space="preserve"><value>Đọc lại toàn bộ tệp để kiểm tra</value></data>
+  <data name="ReadAllRemote" xml:space="preserve"><value>Đọc lại toàn bộ danh sách và thông tin SharePoint</value></data>
+  <data name="IdleVerification" xml:space="preserve"><value>Kiểm tra sâu khi máy rảnh</value></data>
+  <data name="SavedHashHint" xml:space="preserve"><value>Mặc định dùng hash đã lưu nếu thông tin nhận dạng tệp còn khớp. Hai lựa chọn đọc lại chỉ áp dụng cho lần So sánh tiếp theo.</value></data>
+  <data name="HashSummary" xml:space="preserve"><value>Hash đã lưu: {0:N0} tệp · Vừa tính: {1:N0} tệp</value></data>
+  <data name="IoSummary" xml:space="preserve"><value>Đọc nội dung: {0} · Ghi thông tin: {1} · Yêu cầu API: {2:N0}</value></data>
+  <data name="HashBasisLabel" xml:space="preserve"><value>Hash lấy từ đâu</value></data>
+  <data name="SavedHash" xml:space="preserve"><value>Dùng hash đã lưu</value></data>
+  <data name="FreshHash" xml:space="preserve"><value>Vừa đọc nội dung và tính hash</value></data>
+  <data name="LastHashedAt" xml:space="preserve"><value>Lần cuối đọc toàn bộ tệp để tính hash</value></data>
+  <data name="MetadataReadAt" xml:space="preserve"><value>Thông tin SharePoint được đọc lúc</value></data>
+  <data name="UnknownTime" xml:space="preserve"><value>Chưa có thông tin</value></data>
+  <data name="IdleChecking" xml:space="preserve"><value>Đang kiểm tra từng phần khi máy rảnh. Sẽ nhường ngay khi bạn thao tác hoặc bắt đầu tác vụ.</value></data>
+  <data name="IdleChecked" xml:space="preserve"><value>Lượt kiểm tra khi máy rảnh vừa qua: {0:N0} khối, đã đọc {1}.</value></data>
+  <data name="IdleCheckHint" xml:space="preserve"><value>Chạy sau 5 phút không thao tác, tối đa 2% dữ liệu mỗi ngày và không quá 1 GiB; với thư mục nhỏ làm tròn theo khối 8 MiB.</value></data>
+  <data name="IdlePaused" xml:space="preserve"><value>Đã dừng kiểm tra khi máy rảnh. Tắt rồi bật lại tùy chọn này để tiếp tục.</value></data>
 </root>

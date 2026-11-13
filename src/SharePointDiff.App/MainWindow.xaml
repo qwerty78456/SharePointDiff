@@ -91,6 +91,17 @@
      </ItemsControl>
     </ScrollViewer>
    </DockPanel>
+   <Expander Header="{Binding L[CheckOptions]}" Margin="0,10,0,0" FontSize="12">
+    <StackPanel Margin="0,10,0,2">
+     <WrapPanel IsEnabled="{Binding NotBusy}">
+      <CheckBox IsChecked="{Binding RehashAllLocal}" Margin="0,0,24,8"><TextBlock Text="{Binding L[RehashAllLocal]}" TextWrapping="Wrap" MaxWidth="340" /></CheckBox>
+      <CheckBox IsChecked="{Binding ReadAllRemote}" Margin="0,0,24,8"><TextBlock Text="{Binding L[ReadAllRemote]}" TextWrapping="Wrap" MaxWidth="360" /></CheckBox>
+      <CheckBox IsChecked="{Binding IdleVerification}" Margin="0,0,0,8"><TextBlock Text="{Binding L[IdleVerification]}" TextWrapping="Wrap" MaxWidth="300" /></CheckBox>
+     </WrapPanel>
+     <TextBlock Text="{Binding L[SavedHashHint]}" TextWrapping="Wrap" Foreground="#64748B" />
+     <TextBlock Text="{Binding IdleInfo}" TextWrapping="Wrap" Foreground="#64748B" Margin="0,6,0,0" />
+    </StackPanel>
+   </Expander>
    </StackPanel>
   </Border>
   <ItemsControl Grid.Row="2" ItemsSource="{Binding SummaryStats}" Margin="0,0,-8,14">
@@ -189,6 +200,7 @@
      </StackPanel>
     </Grid>
     <TextBlock Text="{Binding L[BackupNotice]}" Foreground="#64748B" TextWrapping="Wrap" Margin="0,10,0,0" FontSize="11" />
+    <WrapPanel Margin="0,6,0,0"><TextBlock Text="{Binding HashSummary}" Foreground="#64748B" FontSize="11" Margin="0,0,20,0" /><TextBlock Text="{Binding IoSummary}" Foreground="#64748B" FontSize="11" TextWrapping="Wrap" /></WrapPanel>
     <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressPercent,Mode=OneWay}" IsIndeterminate="{Binding Indeterminate,Mode=OneWay}" Height="4" Margin="0,12,0,8" Foreground="#126A70" />
     <DockPanel><TextBlock DockPanel.Dock="Left" Text="{Binding StatusText}" FontWeight="Medium" FontSize="12" Margin="0,0,16,0" />
      <TextBlock Text="{Binding ProgressPath}" Foreground="#64748B" TextTrimming="CharacterEllipsis" FontSize="12" />

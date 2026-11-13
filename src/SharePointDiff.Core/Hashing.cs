@@ -69,36 +69,62 @@ public static class FileHashing
     }
     /// <param name="share">Scans pass ReadWrite|Delete so Office can still save; the size/mtime post-check then reports FileChanged.
     /// Every verification before a write keeps the default Read share.</param>
-    public static async Task<FileHashes> ComputeAsync(string path, CancellationToken ct = default, FileShare share = FileShare.Read)
+    public static async Task<FileHashes> ComputeAsync(string path, CancellationToken ct = default, FileShare share = FileShare.Read) =>
+        (await ReadDetailedAsync(path, ct, share, false)).Hashes;
+
+    internal static async Task<HashReadResult> ReadDetailedAsync(string path, CancellationToken ct, FileShare share, bool blocks, string? root = null)
     {
         IoMetrics.Add("Hash.Calls");
-        var before = new FileInfo(path);
-        long expected = before.Length;
-        DateTime stamp = before.LastWriteTimeUtc;
+        var beforePath = new FileInfo(path); long expected = beforePath.Length; DateTime stamp = beforePath.LastWriteTimeUtc;
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, share, 1024 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        var qxh = new QuickXorHasher();
-        using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        if (root != null)
+        {
+            if (NativeFileInfo.FinalPath(stream) is { } final) SafePaths.Inside(root, final);
+            else SafePaths.Resolve(root, Path.GetRelativePath(root, path));
+        }
+        var before = NativeFileInfo.TryRead(stream);
+        using var hashes = new HashAccumulator();
+        using var chunkHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var chunks = new List<HashBlock>(); long chunkOffset = 0; int chunkSize = 0;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
-        long size = 0;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
         try
         {
-            int count;
-            while ((count = await stream.ReadAsync(buffer.AsMemory(), ct)) != 0)
+            int n;
+            while ((n = await stream.ReadAsync(buffer.AsMemory(), ct)) != 0)
             {
-                ct.ThrowIfCancellationRequested();
-                qxh.Append(buffer.AsSpan(0, count));
-                sha.AppendData(buffer.AsSpan(0, count));
-                size += count;
-                IoMetrics.Add("Content.ReadBytes", count);
+                ct.ThrowIfCancellationRequested(); hashes.Append(buffer.AsSpan(0, n)); IoMetrics.Add("Content.ReadBytes", n);
+                if (blocks)
+                {
+                    int offset = 0;
+                    while (offset < n)
+                    {
+                        int take = Math.Min(n - offset, LocalHashCache.BlockSize - chunkSize);
+                        chunkHash.AppendData(buffer.AsSpan(offset, take)); offset += take; chunkSize += take;
+                        if (chunkSize == LocalHashCache.BlockSize)
+                        {
+                            chunks.Add(new(chunkOffset, chunkSize, Convert.ToHexString(chunkHash.GetHashAndReset()), now));
+                            chunkOffset += chunkSize; chunkSize = 0;
+                        }
+                    }
+                }
             }
+            if (blocks && chunkSize > 0) chunks.Add(new(chunkOffset, chunkSize, Convert.ToHexString(chunkHash.GetHashAndReset()), now));
         }
         finally { ArrayPool<byte>.Shared.Return(buffer); }
-        before.Refresh();
-        if (size != expected || before.Length != expected || before.LastWriteTimeUtc != stamp)
+        var after = NativeFileInfo.TryRead(stream); beforePath.Refresh();
+        if (hashes.Size != expected || beforePath.Length != expected || beforePath.LastWriteTimeUtc != stamp || before != after)
             throw new OperationException("FileChanged", path);
-        return new(size, qxh.Finish(), Convert.ToHexString(sha.GetHashAndReset()));
+        // With a scan's permissive share, a pathname can be swapped while the original handle remains valid.
+        if (after != null)
+        {
+            await using var current = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            if (after != NativeFileInfo.TryRead(current)) throw new OperationException("FileChanged", path);
+        }
+        return new(hashes.Finish(), after, after != null ? DateTime.FromFileTimeUtc(after.LastWriteTime) : stamp, chunks, now);
     }
+
 }
 
 internal sealed class HashAccumulator : IDisposable

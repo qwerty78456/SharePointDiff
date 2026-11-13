@@ -7,6 +7,7 @@ public partial class App : Application
 {
     internal static bool HasFatalError { get; private set; }
     internal TrayAgent? Agent { get; private set; }
+    internal IdleVerifier? IdleChecks { get; private set; }
     private SingleInstance? instance;
     private MainWindow? FirstMainWindow => Windows.OfType<MainWindow>().FirstOrDefault();
     protected override void OnStartup(StartupEventArgs e)
@@ -48,6 +49,7 @@ public partial class App : Application
         {
             instance = SingleInstance.TryClaim(signalOwner: !agent);
             if (instance == null) { Shutdown(0); return; }
+            IdleChecks = new IdleVerifier(this);
         }
         if (agent)
         {
@@ -74,7 +76,7 @@ public partial class App : Application
     }
     protected override void OnExit(ExitEventArgs e)
     {
-        Agent?.Dispose(); instance?.Dispose();
+        IdleChecks?.Dispose(); Agent?.Dispose(); instance?.Dispose();
         base.OnExit(e);
     }
 }

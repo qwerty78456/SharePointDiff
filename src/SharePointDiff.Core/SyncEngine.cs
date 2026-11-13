@@ -31,7 +31,8 @@ public sealed class SyncEngine(IRemoteReader remote)
         using var parallel = new SemaphoreSlim(2, 2);
         var cacheLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
         var reuseSources = plan.Items.GroupBy(x => ContentGrouping.Key(x.Entry.Remote!))
-            .ToDictionary(g => g.Key, g => g.Select(x => x.Entry.ReusePath).FirstOrDefault(p => p != null && File.Exists(p)));
+            .ToDictionary(g => g.Key, g => g.Where(x => x.Entry.ReusePath != null && File.Exists(x.Entry.ReusePath))
+                .Select(x => new ReuseCandidate(x.Entry.ReusePath!, x.Entry.ReuseSha256)).FirstOrDefault());
         string? stopReason = null;
         async Task<TransferResult> FailAsync(WorkItem item, Exception ex, string code)
         {
@@ -102,11 +103,11 @@ public sealed class SyncEngine(IRemoteReader remote)
         // Retention only after a complete, uncancelled run that was not stopped; still under the mirror lock.
         if (!ct.IsCancellationRequested && stopReason == null) report = report with { Pruned = await Retention.PruneAsync(workspace, run, scan, installed: installedSnapshot) };
         await JsonFiles.WriteAsync(Path.Combine(run, "io.json"), measurements.Snapshot());
-        return report;
+        return report with { Statistics = measurements.Snapshot() };
     }
     private async Task<TransferResult> TransferOneAsync(Workspace workspace, string run, WorkItem work,
         ConcurrentDictionary<string, SemaphoreSlim> locks, Func<long> nextSequence, ManifestSession manifest,
-        IReadOnlyDictionary<string, string?> reuseSources, IProgress<OperationProgress>? progress, CancellationToken ct)
+        IReadOnlyDictionary<string, ReuseCandidate?> reuseSources, IProgress<OperationProgress>? progress, CancellationToken ct)
     {
         using var phase = IoMetrics.Stage("Transfer");
         var entry = work.Entry;
@@ -155,10 +156,10 @@ public sealed class SyncEngine(IRemoteReader remote)
                     file = start; sourceObserved = true;
                     string partial = cache + ".partial";
                     FileHashes? received = null;
-                    if (reuseSources.GetValueOrDefault(ContentGrouping.Key(file)) is { } source && File.Exists(source) && file.QuickXorHash is { Length: > 0 })
+                    if (reuseSources.GetValueOrDefault(ContentGrouping.Key(file)) is { } source && File.Exists(source.Path) && file.QuickXorHash is { Length: > 0 })
                     {
-                        received = await FileHashing.CopyHashAsync(source, partial, ct, FileMode.Create);
-                        if (Matches(received, file)) origin = "Reused";
+                        received = await FileHashing.CopyHashAsync(source.Path, partial, ct, FileMode.Create);
+                        if (Matches(received, file) && (source.Sha256 == null || source.Sha256 == received.Sha256)) origin = "Reused";
                         else { File.Delete(partial); received = null; }
                     }
                     if (received == null)
@@ -234,9 +235,10 @@ public sealed class SyncEngine(IRemoteReader remote)
                 // From this point cancellation must not interrupt verification or durable audit records.
                 File.SetCreationTimeUtc(destination, file.Created.UtcDateTime);
                 File.SetLastWriteTimeUtc(destination, file.Modified.UtcDateTime);
-                var installed = await FileHashing.ComputeAsync(destination, CancellationToken.None);
+                var installedRead = await FileHashing.ReadDetailedAsync(destination, CancellationToken.None, FileShare.Read, false);
+                var installed = installedRead.Hashes;
                 if (installed != verified) throw new OperationException("HashMismatch", entry.RelativePath);
-                var local = new LocalFile(entry.RelativePath, destination, installed, File.GetLastWriteTimeUtc(destination));
+                var local = new LocalFile(entry.RelativePath, destination, installed, installedRead.LastWriteUtc, HashBasis.Fresh, installedRead.ReadAt, installedRead.Identity);
                 var result = new TransferResult(entry.RelativePath, file.QuickXorHash is { Length: > 0 } ? "Verified" : "DownloadedUnverified",
                     backup, old?.Sha256, installed.Sha256, file.QuickXorHash, downloaded, null, attempts, stalls, local, file);
                 await manifest.RecordCommitAsync(run, file, installed, result with { InstalledLocal = null, InstalledRemote = null }, origin);

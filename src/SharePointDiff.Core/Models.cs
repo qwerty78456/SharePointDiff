@@ -7,7 +7,10 @@ public enum OverwriteMode { KeepLocal, Selected, AllDifferences }
 public sealed record ConnectionProfile(string Name, string TenantId, string ClientId);
 public sealed record LibraryInfo(string Id, string DriveId, string Title, string RootUrl, string LocalFolder, int ItemCount);
 public sealed record FileHashes(long Size, string QuickXorHash, string Sha256);
-public sealed record LocalFile(string RelativePath, string FullPath, FileHashes Hashes, DateTime LastWriteUtc);
+public enum HashBasis { Fresh, Saved }
+public sealed record LocalFile(string RelativePath, string FullPath, FileHashes Hashes, DateTime LastWriteUtc,
+    HashBasis HashBasis = HashBasis.Fresh, DateTimeOffset? LastHashedAt = null, FileIdentity? Identity = null);
+public sealed record ScanOptions(bool RehashAllLocal = false, bool ReadAllRemote = false, bool Background = false);
 public sealed record MetadataSnapshot(JsonElement Fields, JsonElement DisplayValues, JsonElement Columns, bool Complete, string? Error = null, DateTimeOffset? ObservedAt = null);
 public sealed record RemoteFile(
     string SiteUrl, string LibraryId, string DriveId, string ItemId, string ListItemId,
@@ -23,11 +26,12 @@ public sealed class DiffEntry
     public LocalFile? Local { get; init; }
     public RemoteFile? Remote { get; init; }
     public string? ReusePath { get; set; }
+    public string? ReuseSha256 { get; set; }
     public OperationIssue? Issue { get; init; }
     public bool IsDifference => Status is DiffStatus.DifferentHash or DiffStatus.DifferentSize;
 }
 public sealed record ScanResult(string SiteUrl, string LocalRoot, IReadOnlyList<DiffEntry> Entries,
-    IReadOnlyList<string> RemoteFolders, IReadOnlyList<OperationIssue> Issues, DateTimeOffset ScannedAt, IReadOnlyList<LibraryInfo>? Libraries = null);
+    IReadOnlyList<string> RemoteFolders, IReadOnlyList<OperationIssue> Issues, DateTimeOffset ScannedAt, IReadOnlyList<LibraryInfo>? Libraries = null, IoStatistics? Statistics = null);
 /// <summary>Libraries seen (<see cref="Known"/>) and ticked (<see cref="Included"/>) at the last completed Compare in the main window.</summary>
 public sealed record LibrarySelection(IReadOnlyList<string> Known, IReadOnlyList<string> Included, DateTimeOffset ComparedAt);
 public enum Provenance { Pristine, Revert, Conflict, Unknown }
@@ -49,7 +53,7 @@ public sealed record OperationProgress(string Code, int Completed = 0, int Total
 public sealed record TransferResult(string Path, string Status, string? BackupPath, string? OldSha256,
     string? NewSha256, string? SharePointHash, long BytesDownloaded, string? Error = null, int Attempts = 0, int Stalls = 0,
     LocalFile? InstalledLocal = null, RemoteFile? InstalledRemote = null, string? PreservedPath = null);
-public sealed record ApplyResult(string RunDirectory, IReadOnlyList<TransferResult> Results, bool Cancelled, string? StopReason = null, PruneResult? Pruned = null);
+public sealed record ApplyResult(string RunDirectory, IReadOnlyList<TransferResult> Results, bool Cancelled, string? StopReason = null, PruneResult? Pruned = null, IoStatistics? Statistics = null);
 /// <summary>Stored as runs/&lt;run&gt;/backup-meta/&lt;StableId(path)&gt;.json next to every verified backup.</summary>
 /// <param name="InstalledMetadata">The manifest record when the replaced bytes were a verified SharePoint version, else null.</param>
 /// <param name="Sequence">Monotonic backup order (newest highest).</param>

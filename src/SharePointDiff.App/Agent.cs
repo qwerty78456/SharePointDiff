@@ -142,6 +142,7 @@ internal sealed class TrayAgent : IDisposable
     internal Forms.NotifyIcon Icon => icon;
     internal bool Attention => attention;
     internal bool Demo => demo;
+    internal bool IsBusy => busy;
     private IReadOnlyList<TokenPermissionReport>? demoPermissions;
     internal Forms.ToolStripMenuItem SignInItem => signIn;
     internal Forms.ToolStripMenuItem CheckItem => check;
@@ -238,6 +239,7 @@ internal sealed class TrayAgent : IDisposable
         busy = true; logonRun = !userInitiated; var source = work = new CancellationTokenSource(); var token = source.Token;
         try
         {
+            if ((app as App)?.IdleChecks is { } idle) await idle.PauseAsync();
             EnsureSession();
             var profile = settings!.Profiles[settings.SelectedProfile];
             var runner = new AgentCheckRunner(reader!, new HttpNetworkProbe(profile.TenantId, probeClient), TimeProvider.System);
@@ -311,6 +313,7 @@ internal sealed class TrayAgent : IDisposable
         SetThreadExecutionState(EsContinuous | EsSystemRequired); // no sleep while files are being written
         try
         {
+            if ((app as App)?.IdleChecks is { } idle) await idle.PauseAsync();
             var plan = DiffService.SyncAll(outcome.Scan.Entries);
             await ReportWriter.WriteScanAsync(new Workspace(outcome.Scan.SiteUrl, outcome.Scan.LocalRoot), outcome.Scan, token);
             Card?.ShowProgress(); SetTooltip(L["TraySyncing"]);
