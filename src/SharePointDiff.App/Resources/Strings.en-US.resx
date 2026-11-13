@@ -413,4 +413,7 @@ Basic sign-in scopes may accompany them: openid, profile, email, offline_access 
   <data name="PermissionsCannotVerify" xml:space="preserve"><value>The sign-in does not expose readable permissions. Read-only access cannot be confirmed, so sign-in is not saved.</value></data>
   <data name="PermissionsSessionOnly" xml:space="preserve"><value>You can still click Connect to inspect and download files in this open session. Sign-in is not saved and automatic checks after Windows sign-in are unavailable. The app does not change SharePoint data.</value></data>
   <data name="ErrorRetryLater" xml:space="preserve"><value>SharePoint asks to wait beyond this operation’s time limit. Retry at the time shown in the error details.</value></data>
+  <data name="ErrorInterruptedCommit" xml:space="preserve"><value>A previous update was interrupted. Current files were checked and backups kept; see the recovery report.</value></data>
+  <data name="ErrorManifestWriteFailed" xml:space="preserve"><value>Could not checkpoint the installed manifest. Completed-file journals remain available for recovery; see the path and cause in the details.</value></data>
+  <data name="ErrorMetadataStoreCorrupt" xml:space="preserve"><value>Saved metadata is damaged, has a missing schema or uses an unsupported format. Updates stopped; see the affected file in the details.</value></data>
 </root>

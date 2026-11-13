@@ -38,6 +38,35 @@ public sealed class QuickXorHasher
 
 public static class FileHashing
 {
+    public static async Task<FileHashes> CopyHashAsync(Stream input, string target, CancellationToken ct, FileMode mode = FileMode.CreateNew)
+    {
+        using var hashes = new HashAccumulator();
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
+        try
+        {
+            await using var output = new FileStream(target, mode, FileAccess.Write, FileShare.None, 1024 * 1024, true);
+            int n;
+            while ((n = await input.ReadAsync(buffer.AsMemory(), ct)) != 0)
+            {
+                hashes.Append(buffer.AsSpan(0, n)); IoMetrics.Add("Content.ReadBytes", n);
+                await output.WriteAsync(buffer.AsMemory(0, n), ct); IoMetrics.Add("Content.WriteBytes", n);
+            }
+            await output.FlushAsync(ct); output.Flush(true);
+            return hashes.Finish();
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
+    }
+    public static async Task<FileHashes> CopyHashAsync(string source, string target, CancellationToken ct, FileMode mode = FileMode.CreateNew)
+    {
+        await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        return await CopyHashAsync(input, target, ct, mode);
+    }
+    public static async Task<FileHashes> CopyVerifiedAsync(string source, string target, CancellationToken ct, FileMode mode = FileMode.CreateNew)
+    {
+        var copied = await CopyHashAsync(source, target, ct, mode);
+        if (copied != await ComputeAsync(target, ct)) throw new OperationException("HashMismatch", target);
+        return copied;
+    }
     /// <param name="share">Scans pass ReadWrite|Delete so Office can still save; the size/mtime post-check then reports FileChanged.
     /// Every verification before a write keeps the default Read share.</param>
     public static async Task<FileHashes> ComputeAsync(string path, CancellationToken ct = default, FileShare share = FileShare.Read)
@@ -70,4 +99,14 @@ public static class FileHashing
             throw new OperationException("FileChanged", path);
         return new(size, qxh.Finish(), Convert.ToHexString(sha.GetHashAndReset()));
     }
+}
+
+internal sealed class HashAccumulator : IDisposable
+{
+    private readonly QuickXorHasher quick = new();
+    private readonly IncrementalHash sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+    public long Size { get; private set; }
+    public void Append(ReadOnlySpan<byte> bytes) { quick.Append(bytes); sha.AppendData(bytes); Size += bytes.Length; }
+    public FileHashes Finish() => new(Size, quick.Finish(), Convert.ToHexString(sha.GetCurrentHash()));
+    public void Dispose() => sha.Dispose();
 }

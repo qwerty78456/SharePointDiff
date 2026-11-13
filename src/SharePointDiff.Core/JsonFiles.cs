@@ -11,12 +11,13 @@ public static class JsonFiles
     {
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() }
+        Converters = { new JsonStringEnumConverter(), new SchemaStorage.MetadataConverter(), new SchemaStorage.ManifestDictionaryConverter() }
     };
     public static JsonElement Empty => JsonSerializer.SerializeToElement(new Dictionary<string, object>());
     public static JsonElement EmptyArray => JsonSerializer.SerializeToElement(Array.Empty<object>());
     public static async Task WriteAsync<T>(string path, T value, CancellationToken ct = default)
     {
+        using var schemas = SchemaStorage.For(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -24,6 +25,7 @@ public static class JsonFiles
             await using (var f = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await JsonSerializer.SerializeAsync(f, value, Options, ct);
+                await schemas.PersistAsync(ct);
                 await f.FlushAsync(ct);
                 f.Flush(true);
                 IoMetrics.Add("Metadata.WriteBytes", f.Length);
@@ -36,6 +38,7 @@ public static class JsonFiles
     /// <summary>Like <see cref="WriteAsync"/> but never replaces an existing file (IOException instead).</summary>
     public static async Task WriteNewAsync<T>(string path, T value, CancellationToken ct = default)
     {
+        using var schemas = SchemaStorage.For(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -43,6 +46,7 @@ public static class JsonFiles
             await using (var f = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await JsonSerializer.SerializeAsync(f, value, Options, ct);
+                await schemas.PersistAsync(ct);
                 await f.FlushAsync(ct);
                 f.Flush(true);
                 IoMetrics.Add("Metadata.WriteBytes", f.Length);
@@ -55,6 +59,7 @@ public static class JsonFiles
     public static T? Read<T>(string path)
     {
         if (!File.Exists(path)) return default;
+        using var schemas = SchemaStorage.For(path);
         IoMetrics.Add("Metadata.Reads"); IoMetrics.Add("Metadata.ReadBytes", new FileInfo(path).Length);
         return JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options);
     }
@@ -92,7 +97,7 @@ public sealed class Workspace
         if ((File.GetAttributes(LocalRoot) & FileAttributes.ReparsePoint) != 0) throw new OperationException("LinkBlocked", localRoot);
         if (DataRoot.StartsWith(LocalRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new OperationException("OutsideRoot");
         string sibling = Path.GetDirectoryName(DataRoot)!;
-        foreach (string dir in new[] { sibling, DataRoot, CacheRoot })
+        foreach (string dir in new[] { sibling, DataRoot, CacheRoot, Path.Combine(DataRoot, "schemas") })
         {
             if (Directory.Exists(dir) && (File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0) throw new OperationException("LinkBlocked", dir);
             Directory.CreateDirectory(dir);

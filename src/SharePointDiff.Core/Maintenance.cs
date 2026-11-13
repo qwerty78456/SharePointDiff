@@ -106,7 +106,7 @@ public static class Retention
         }
         return found;
     }
-    public static async Task<PruneResult> PruneAsync(Workspace workspace, string currentRun, ScanResult scan, int keep = PristineVersionsPerFile)
+    public static async Task<PruneResult> PruneAsync(Workspace workspace, string currentRun, ScanResult scan, int keep = PristineVersionsPerFile, IReadOnlyDictionary<string, InstalledRecord>? installed = null)
     {
         var deleted = new List<PrunedItem>(); var kept = new List<PrunedItem>(); var failed = new List<PrunedItem>();
         var candidates = new List<(PrunedItem Item, string File, string? Meta, FileHashes? Expected)>();
@@ -131,7 +131,7 @@ public static class Retention
             }
         }
         // ---- Cache ----
-        string? cacheSkipped = CacheCandidates(workspace, scan, candidates, kept);
+        string? cacheSkipped = CacheCandidates(workspace, scan, candidates, kept, installed);
         if (candidates.Count == 0) return new(deleted, kept, failed, cacheSkipped);
         // The audit trail is written before anything is deleted; without it nothing is deleted.
         try { await JsonFiles.WriteAsync(Path.Combine(currentRun, "prune-plan.json"), candidates.Select(c => c.Item).ToArray(), CancellationToken.None); }
@@ -184,16 +184,16 @@ public static class Retention
         return new(kind, path, r?.RelativePath, r?.Hashes?.Sha256, r?.Hashes?.Size ?? 0, Path.GetFileName(f.Run), r?.Sequence,
             remote?.DriveId, remote?.ItemId, remote?.ETag, remote?.WebUrl, remote?.Modified, r?.BackedUpAt, reason);
     }
-    private static string? CacheCandidates(Workspace workspace, ScanResult scan, List<(PrunedItem, string, string?, FileHashes?)> candidates, List<PrunedItem> kept)
+    private static string? CacheCandidates(Workspace workspace, ScanResult scan, List<(PrunedItem, string, string?, FileHashes?)> candidates, List<PrunedItem> kept, IReadOnlyDictionary<string, InstalledRecord>? installed)
     {
         string manifest = Path.Combine(workspace.DataRoot, "installed-manifest.json");
         if (!File.Exists(manifest)) return "no installed manifest yet";
         if (scan.Libraries == null) return "scan without library list";
         if (!Directory.Exists(workspace.CacheRoot)) return null;
-        Dictionary<string, InstalledRecord>? records;
-        try { records = JsonFiles.Read<Dictionary<string, InstalledRecord>>(manifest); } catch (JsonException) { return "manifest unreadable"; }
+        IReadOnlyDictionary<string, InstalledRecord>? records;
+        try { records = installed ?? JsonFiles.Read<Dictionary<string, InstalledRecord>>(manifest); } catch (JsonException) { return "manifest unreadable"; }
         // Live: installed versions (offline restore) and everything the scan saw on SharePoint.
-        var live = (records ?? []).Values.Select(r => r.Remote).Concat(scan.Entries.Where(e => e.Remote != null).Select(e => e.Remote!))
+        var live = (records?.Values ?? []).Select(r => r.Remote).Concat(scan.Entries.Where(e => e.Remote != null).Select(e => e.Remote!))
             .Select(r => Path.GetFileName(workspace.CachePath(r))[..16]).ToHashSet(StringComparer.Ordinal);
         var complete = scan.Libraries.Where(l => scan.RemoteFolders.Contains(l.LocalFolder) && !scan.Issues.Any(i => i.Path == l.Title))
             .Select(l => LibrarySelectionStore.Id(l.Id)).ToHashSet();

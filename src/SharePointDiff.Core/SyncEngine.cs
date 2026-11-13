@@ -7,6 +7,7 @@ public sealed class SyncEngine(IRemoteReader remote)
 {
     public async Task<ApplyResult> ApplyAsync(ScanResult scan, SyncPlan plan, IProgress<OperationProgress>? progress, CancellationToken ct)
     {
+        using var measurements = IoMetrics.Begin("Apply");
         var workspace = new Workspace(scan.SiteUrl, scan.LocalRoot);
         using var gate = WorkspaceLock.Acquire(workspace);
         string run = workspace.CreateRun();
@@ -16,6 +17,8 @@ public sealed class SyncEngine(IRemoteReader remote)
         long required = plan.Items.Sum(x => x.Entry.Remote!.Size) * 2 + plan.BackupBytes;
         var drive = new DriveInfo(Path.GetPathRoot(scan.LocalRoot)!);
         if (drive.AvailableFreeSpace < required) throw new OperationException("DiskFull");
+        await using var manifest = await ManifestSession.OpenAsync(workspace, ct);
+        await manifest.ReserveAsync(run, plan.Items.Count, ct);
         // Backup order comes from a counter kept under the lock, never from the wall clock.
         long sequence = await BackupSequence.ReserveAsync(workspace, plan.Replacements, ct) - 1;
         long NextSequence() => Interlocked.Increment(ref sequence);
@@ -44,7 +47,7 @@ public sealed class SyncEngine(IRemoteReader remote)
             try
             {
                 TransferResult result;
-                try { result = await TransferOneAsync(workspace, run, item, cacheLocks, NextSequence, progress, workToken); }
+                try { result = await TransferOneAsync(workspace, run, item, cacheLocks, NextSequence, manifest, progress, workToken); }
                 // A cancellation nobody asked for is a timeout: report it as a per-file error, not as "Cancelled".
                 catch (OperationCanceledException ex) when (!workToken.IsCancellationRequested) { result = await FailAsync(item, ex, "RequestTimeout"); }
                 catch (OperationCanceledException) { result = new(item.Entry.RelativePath, "Cancelled", null, null, null, null, 0); }
@@ -68,29 +71,33 @@ public sealed class SyncEngine(IRemoteReader remote)
         }
         var tasks = plan.Items.Select(Execute).ToArray();
         try { await Task.WhenAll(tasks); } catch (OperationCanceledException) { }
+        var completedPaths = results.Select(r => SafePaths.Key(r.Path)).ToHashSet();
         foreach (var item in plan.Items)
-            if (!results.Any(r => SafePaths.Key(r.Path) == SafePaths.Key(item.Entry.RelativePath))) results.Add(new(item.Entry.RelativePath, "Cancelled", null, null, null, null, 0));
+            if (!completedPaths.Contains(SafePaths.Key(item.Entry.RelativePath))) results.Add(new(item.Entry.RelativePath, "Cancelled", null, null, null, null, 0));
         var ordered = results.OrderBy(x => x.Path).ToArray();
         var report = new ApplyResult(run, ordered, ct.IsCancellationRequested, stopReason);
+        await manifest.FlushAsync();
         // Preserve an audit trail even if the user cancelled the operation.
         await JsonFiles.WriteAsync(Path.Combine(run, "results.json"), report);
         var csv = new List<IEnumerable<object?>> { new object?[] { "Path", "Status", "BackupPath", "OldSha256", "NewSha256", "SharePointHash", "BytesDownloaded", "Error", "Attempts", "Stalls" } };
         csv.AddRange(report.Results.Select(r => new object?[] { r.Path, r.Status, r.BackupPath, r.OldSha256, r.NewSha256, r.SharePointHash, r.BytesDownloaded, r.Error, r.Attempts, r.Stalls }));
         await JsonFiles.CsvAsync(Path.Combine(run, "results.csv"), csv);
         var installedMetadata = new List<RemoteFile>();
+        var installedSnapshot = await manifest.SnapshotAsync(CancellationToken.None);
         foreach (var result in report.Results.Where(r => r.Status is "Verified" or "DownloadedUnverified"))
         {
-            var installed = await ManifestStore.ReadAsync(workspace, result.Path, CancellationToken.None);
+            var installed = installedSnapshot.GetValueOrDefault(SafePaths.Key(result.Path));
             if (installed != null) installedMetadata.Add(installed.Remote);
         }
         await ReportWriter.WriteMetadataCsvAsync(Path.Combine(run, "remote-metadata.csv"), installedMetadata, CancellationToken.None);
         foreach (var semaphore in cacheLocks.Values) semaphore.Dispose();
         // Retention only after a complete, uncancelled run that was not stopped; still under the mirror lock.
-        if (!ct.IsCancellationRequested && stopReason == null) report = report with { Pruned = await Retention.PruneAsync(workspace, run, scan) };
+        if (!ct.IsCancellationRequested && stopReason == null) report = report with { Pruned = await Retention.PruneAsync(workspace, run, scan, installed: installedSnapshot) };
+        await JsonFiles.WriteAsync(Path.Combine(run, "io.json"), measurements.Snapshot());
         return report;
     }
     private async Task<TransferResult> TransferOneAsync(Workspace workspace, string run, WorkItem work,
-        ConcurrentDictionary<string, SemaphoreSlim> locks, Func<long> nextSequence, IProgress<OperationProgress>? progress, CancellationToken ct)
+        ConcurrentDictionary<string, SemaphoreSlim> locks, Func<long> nextSequence, ManifestSession manifest, IProgress<OperationProgress>? progress, CancellationToken ct)
     {
         var entry = work.Entry;
         if (entry.Remote == null || entry.Status is DiffStatus.LocalOnly or DiffStatus.Error or DiffStatus.Unverified or DiffStatus.Match)
@@ -172,7 +179,7 @@ public sealed class SyncEngine(IRemoteReader remote)
             if (b != old) throw new OperationException("BackupFailed", entry.RelativePath);
             DateTime created = File.GetCreationTimeUtc(destination), modified = File.GetLastWriteTimeUtc(destination);
             File.SetCreationTimeUtc(backup, created); File.SetLastWriteTimeUtc(backup, modified);
-            var oldMetadata = await ManifestStore.ReadAsync(workspace, entry.RelativePath, ct);
+            var oldMetadata = await manifest.ReadAsync(entry.RelativePath, ct);
             if (oldMetadata?.Sha256 != old!.Sha256) oldMetadata = null;
             // Kept apart from the backup tree, so a user file named "X.metadata.json" can never collide with X's record.
             await JsonFiles.WriteNewAsync(Path.Combine(run, "backup-meta", JsonFiles.StableId(entry.RelativePath) + ".json"),
@@ -208,9 +215,8 @@ public sealed class SyncEngine(IRemoteReader remote)
                 File.SetLastWriteTimeUtc(destination, file.Modified.UtcDateTime);
                 var installed = await FileHashing.ComputeAsync(destination, CancellationToken.None);
                 if (installed != verified) throw new OperationException("HashMismatch", entry.RelativePath);
-                await ManifestStore.SaveAsync(workspace, file, installed, CancellationToken.None, origin);
                 var result = new TransferResult(entry.RelativePath, file.QuickXorHash is { Length: > 0 } ? "Verified" : "DownloadedUnverified", backup, old?.Sha256, installed.Sha256, file.QuickXorHash, downloaded, null, attempts, stalls);
-                await JsonFiles.WriteAsync(Path.Combine(run, "committed", JsonFiles.StableId(entry.RelativePath) + ".json"), new { Result = result, Remote = file }, CancellationToken.None);
+                await manifest.RecordCommitAsync(run, file, installed, result, origin);
                 return result;
             }
             finally { CommitGate.Exit(); }

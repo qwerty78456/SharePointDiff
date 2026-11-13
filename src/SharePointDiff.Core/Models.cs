@@ -8,7 +8,7 @@ public sealed record ConnectionProfile(string Name, string TenantId, string Clie
 public sealed record LibraryInfo(string Id, string DriveId, string Title, string RootUrl, string LocalFolder, int ItemCount);
 public sealed record FileHashes(long Size, string QuickXorHash, string Sha256);
 public sealed record LocalFile(string RelativePath, string FullPath, FileHashes Hashes, DateTime LastWriteUtc);
-public sealed record MetadataSnapshot(JsonElement Fields, JsonElement DisplayValues, JsonElement Columns, bool Complete, string? Error = null);
+public sealed record MetadataSnapshot(JsonElement Fields, JsonElement DisplayValues, JsonElement Columns, bool Complete, string? Error = null, DateTimeOffset? ObservedAt = null);
 public sealed record RemoteFile(
     string SiteUrl, string LibraryId, string DriveId, string ItemId, string ListItemId,
     string RelativePath, string Name, long Size, string? QuickXorHash, string ETag,

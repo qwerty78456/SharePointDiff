@@ -14,7 +14,9 @@ public sealed partial class DiffService(IRemoteReader remote)
         var workspace = new Workspace(site, root);
         using var gate = WorkspaceLock.Acquire(workspace);
         var inventory = await remote.GetInventoryAsync(site, libraries, progress, ct);
+        await using var manifest = await ManifestSession.OpenAsync(workspace, ct);
         var issues = inventory.Issues.ToList();
+        issues.AddRange(manifest.RecoveryIssues);
         var local = new Dictionary<string, LocalFile>();
         var collisions = new HashSet<string>();
         var libraryFolders = libraries.Select(l => SafePaths.Key(l.LocalFolder)).ToHashSet();
@@ -94,7 +96,8 @@ public sealed partial class DiffService(IRemoteReader remote)
         var result = new ScanResult(site, root, entries.OrderBy(e => e.RelativePath, StringComparer.OrdinalIgnoreCase).ToArray(), inventory.Folders, issues, DateTimeOffset.Now, libraries);
         await JsonFiles.WriteAsync(Path.Combine(workspace.DataRoot, "remote-snapshot.json"), inventory, ct);
         if (report) await ReportWriter.WriteScanAsync(workspace, result, ct);
-        await ManifestStore.RefreshMatchesAsync(workspace, result.Entries.Where(e => e.Status == DiffStatus.Match), ct);
+        await manifest.ObserveMatchesAsync(result.Entries.Where(e => e.Status == DiffStatus.Match), ct);
+        await manifest.FlushAsync();
         await JsonFiles.WriteAsync(Path.Combine(workspace.DataRoot, "last-scan-io.json"), measurements.Snapshot(), ct);
         return result;
     }
