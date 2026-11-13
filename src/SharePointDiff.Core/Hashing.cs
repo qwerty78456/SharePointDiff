@@ -42,6 +42,7 @@ public static class FileHashing
     /// Every verification before a write keeps the default Read share.</param>
     public static async Task<FileHashes> ComputeAsync(string path, CancellationToken ct = default, FileShare share = FileShare.Read)
     {
+        IoMetrics.Add("Hash.Calls");
         var before = new FileInfo(path);
         long expected = before.Length;
         DateTime stamp = before.LastWriteTimeUtc;
@@ -60,6 +61,7 @@ public static class FileHashing
                 qxh.Append(buffer.AsSpan(0, count));
                 sha.AppendData(buffer.AsSpan(0, count));
                 size += count;
+                IoMetrics.Add("Content.ReadBytes", count);
             }
         }
         finally { ArrayPool<byte>.Shared.Return(buffer); }

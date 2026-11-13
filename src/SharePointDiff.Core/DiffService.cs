@@ -10,38 +10,17 @@ public sealed partial class DiffService(IRemoteReader remote)
         IProgress<OperationProgress>? progress, CancellationToken ct, bool report = true)
     {
         site = NormalizeSite(site); root = Path.GetFullPath(root);
+        using var measurements = IoMetrics.Begin("Scan");
         var workspace = new Workspace(site, root);
         using var gate = WorkspaceLock.Acquire(workspace);
         var inventory = await remote.GetInventoryAsync(site, libraries, progress, ct);
         var issues = inventory.Issues.ToList();
         var local = new Dictionary<string, LocalFile>();
         var collisions = new HashSet<string>();
-        var paths = new List<string>();
         var libraryFolders = libraries.Select(l => SafePaths.Key(l.LocalFolder)).ToHashSet();
-        void Walk(string directory, bool top)
-        {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                foreach (string path in Directory.EnumerateFileSystemEntries(directory))
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var attr = File.GetAttributes(path);
-                    string rel = Path.GetRelativePath(root, path).Replace('\\', '/');
-                    // Only selected libraries are compared below the root; other root folders are never read (root files still are).
-                    if (top && (attr & FileAttributes.Directory) != 0 && !libraryFolders.Contains(SafePaths.Key(rel))) continue;
-                    if ((attr & FileAttributes.ReparsePoint) != 0) { issues.Add(new("LinkBlocked", rel)); continue; }
-                    if ((attr & FileAttributes.Directory) != 0) Walk(path, false);
-                    // An install temp left by a killed process is reported, never treated as user content, planned or deleted.
-                    else if (InstallTemp().IsMatch(Path.GetFileName(path))) issues.Add(new("StaleInstallTemp", rel));
-                    else paths.Add(path);
-                }
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            { issues.Add(new("LocalReadFailed", Path.GetRelativePath(root, directory), ex.ToString())); }
-        }
-        await Task.Run(() => Walk(root, true), ct);
+        var tree = await Task.Run(() => new DirectorySnapshot(root, libraryFolders, ct), ct);
+        var paths = tree.Files;
+        issues.AddRange(tree.Issues);
         int done = 0;
         foreach (string path in paths)
         {
@@ -67,11 +46,9 @@ public sealed partial class DiffService(IRemoteReader remote)
             if (!remoteKeys.Add(k)) throw new OperationException("PathCollision", file.RelativePath);
             local.TryGetValue(k, out var a);
             OperationIssue? problem = null;
-            try { SafePaths.Resolve(root, file.RelativePath); }
+            try { problem = tree.Validate(file.RelativePath); }
             catch (OperationException ex) { problem = new(ex.Code, file.RelativePath); }
             if (collisions.Contains(k)) problem = new("PathCollision", file.RelativePath);
-            if (Directory.Exists(SafePaths.Inside(root, Path.Combine(root, file.RelativePath.Replace('/', Path.DirectorySeparatorChar)))))
-                problem = new("PathCollision", file.RelativePath);
             // Unreadable files/directories must never be mistaken for an absent destination.
             var readError = issues.FirstOrDefault(i => i.Code is "LocalReadFailed" or "LinkBlocked" or "FileChanged" or "StaleInstallTemp" &&
                 (SafePaths.Key(i.Path) == k || k.StartsWith(SafePaths.Key(i.Path).TrimEnd('/') + "/", StringComparison.Ordinal)));
@@ -118,6 +95,7 @@ public sealed partial class DiffService(IRemoteReader remote)
         await JsonFiles.WriteAsync(Path.Combine(workspace.DataRoot, "remote-snapshot.json"), inventory, ct);
         if (report) await ReportWriter.WriteScanAsync(workspace, result, ct);
         await ManifestStore.RefreshMatchesAsync(workspace, result.Entries.Where(e => e.Status == DiffStatus.Match), ct);
+        await JsonFiles.WriteAsync(Path.Combine(workspace.DataRoot, "last-scan-io.json"), measurements.Snapshot(), ct);
         return result;
     }
     /// <summary>Lists the site's document libraries with their stable local folder names and records the mapping.</summary>

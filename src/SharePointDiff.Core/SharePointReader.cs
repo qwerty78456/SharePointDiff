@@ -12,6 +12,9 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
     private readonly ITokenProvider tokens;
     private readonly HttpClient api;
     private readonly HttpClient content;
+    private readonly HttpClient contentRequest;
+    private readonly ServiceCooldown cooldown = new();
+    public TimeSpan RetryWaitBudget { get; set; } = TimeSpan.FromMinutes(15);
     // Shared by both transfer workers; one fetch per library even when they refresh concurrently on a cold reader.
     private readonly ConcurrentDictionary<string, Lazy<Task<JsonElement>>> columns = new();
     /// <summary>Clock for every timeout, stall timer and retry wait (tests use a fake one).</summary>
@@ -26,11 +29,13 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
     /// <summary>First wait between content attempts; doubles each time, capped at 60 s.</summary>
     public TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(5);
     public SharePointReader(ITokenProvider tokens) : this(tokens,
-        new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }), new HttpClient())
+        HttpTransport.Client(true), HttpTransport.Client(false), HttpTransport.Client(false))
     { }
-    public SharePointReader(ITokenProvider tokens, HttpClient api, HttpClient content)
+    public SharePointReader(ITokenProvider tokens, HttpClient api, HttpClient content, HttpClient? contentRequest = null)
     {
         this.tokens = tokens; this.api = api; this.content = content;
+        this.contentRequest = contentRequest ?? api;
+        this.contentRequest.Timeout = Timeout.InfiniteTimeSpan;
         api.Timeout = Timeout.InfiniteTimeSpan; content.Timeout = Timeout.InfiniteTimeSpan;
     }
     /// <summary>The caller's token plus a deadline on <see cref="Time"/>.</summary>
@@ -46,14 +51,21 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
         bool refreshed = false, refreshNext = false; int busy = 0, transport = 0;
         while (true)
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            await cooldown.WaitAsync(new Uri(url), Time, RetryWaitBudget, ct);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url) { Version = HttpVersion.Version20, VersionPolicy = HttpVersionPolicy.RequestVersionOrLower };
             // Sign-in (possibly an interactive browser) runs on the caller's token: it has its own limits and is never a "request timeout".
             req.Headers.Authorization = new("Bearer", await tokens.GetAsync(resource, ct, refreshNext)); refreshNext = false;
             req.Headers.Accept.ParseAdd(resource == Graph ? "application/json" : "application/json;odata=nometadata");
             HttpResponseMessage response;
             using (var deadline = new Deadline(ct, RequestTimeout, Time))
             {
-                try { response = await api.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, deadline.Token); }
+                try
+                {
+                    IoMetrics.Add(resource == Graph ? "Network.GraphRequests" : "Network.RestRequests");
+                    bool bytes = new Uri(url).AbsolutePath.EndsWith("/content", StringComparison.Ordinal);
+                    if (bytes) req.Headers.AcceptEncoding.ParseAdd("identity");
+                    response = await (bytes ? contentRequest : api).SendAsync(req, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                }
                 catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new OperationException("RequestTimeout", url, ex); }
                 // A dropped connection (common on a throttled line) is retried a few times before it surfaces.
                 catch (HttpRequestException) when (transport < 3 && !ct.IsCancellationRequested) { await Task.Delay(TimeSpan.FromSeconds(2 << transport++), Time, ct); continue; }
@@ -65,7 +77,8 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
                 TimeSpan delay = response.Headers.RetryAfter?.Delta ??
                     (response.Headers.RetryAfter?.Date is { } date ? date - Time.GetUtcNow() : TimeSpan.FromSeconds(Math.Pow(2, busy + 1)));
                 response.Dispose(); busy++;
-                await Task.Delay(TimeSpan.FromMilliseconds(Math.Clamp(delay.TotalMilliseconds, 100, 120000)), Time, ct); continue;
+                cooldown.Set(new Uri(url), Time.GetUtcNow() + (delay > TimeSpan.Zero ? delay : TimeSpan.FromMilliseconds(100)));
+                continue;
             }
             if (!response.IsSuccessStatusCode && status is not (301 or 302 or 303 or 307 or 308))
             {
@@ -87,7 +100,7 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
         using var deadline = new Deadline(ct, RequestTimeout, Time);
         try
         {
-            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+            await using var stream = new CountingReadStream(await response.Content.ReadAsStreamAsync(deadline.Token), "Network.JsonDecodedBytes");
             using var json = await JsonDocument.ParseAsync(stream, cancellationToken: deadline.Token);
             return json.RootElement.Clone();
         }
@@ -314,19 +327,21 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
     {
         for (int attempt = 0; ; attempt++)
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, location);
+            await cooldown.WaitAsync(location, Time, RetryWaitBudget, ct);
+            using var req = new HttpRequestMessage(HttpMethod.Get, location) { Version = HttpVersion.Version20, VersionPolicy = HttpVersionPolicy.RequestVersionOrLower };
+            req.Headers.AcceptEncoding.ParseAdd("identity");
             if (offset > 0) req.Headers.Range = new RangeHeaderValue(offset, null);
             HttpResponseMessage response;
             using (var deadline = new Deadline(ct, RequestTimeout, Time))
             {
-                try { response = await content.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, deadline.Token); }
+                try { IoMetrics.Add("Network.ContentRequests"); response = await content.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, deadline.Token); }
                 catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new OperationException("RequestTimeout", file.RelativePath, ex); }
                 catch (HttpRequestException ex) when (!ct.IsCancellationRequested) { throw new OperationException("DownloadInterrupted", file.RelativePath, ex); }
             }
             if (((int)response.StatusCode == 429 || (int)response.StatusCode >= 500) && attempt < 5)
             {
-                var wait = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(Math.Pow(2, attempt + 1));
-                response.Dispose(); await Task.Delay(TimeSpan.FromMilliseconds(Math.Clamp(wait.TotalMilliseconds, 100, 120000)), Time, ct); continue;
+                var wait = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date is { } date ? date - Time.GetUtcNow() : TimeSpan.FromSeconds(Math.Pow(2, attempt + 1)));
+                response.Dispose(); cooldown.Set(location, Time.GetUtcNow() + (wait > TimeSpan.Zero ? wait : TimeSpan.FromMilliseconds(100))); continue;
             }
             return response;
         }
@@ -353,6 +368,6 @@ public sealed class SharePointReader : IRemoteReader, IDisposable
         }
         await output.FlushAsync(ct);
     }
-    public void Dispose() { api.Dispose(); content.Dispose(); }
+    public void Dispose() { api.Dispose(); content.Dispose(); if (!ReferenceEquals(contentRequest, api)) contentRequest.Dispose(); }
     private sealed record PartialState(string ETag, long Size, string? QuickXorHash = null, string? LibraryId = null);
 }

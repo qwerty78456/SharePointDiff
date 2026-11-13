@@ -26,6 +26,8 @@ public static class JsonFiles
                 await JsonSerializer.SerializeAsync(f, value, Options, ct);
                 await f.FlushAsync(ct);
                 f.Flush(true);
+                IoMetrics.Add("Metadata.WriteBytes", f.Length);
+                IoMetrics.Add("Metadata.Writes");
             }
             File.Move(tmp, path, true);
         }
@@ -43,12 +45,19 @@ public static class JsonFiles
                 await JsonSerializer.SerializeAsync(f, value, Options, ct);
                 await f.FlushAsync(ct);
                 f.Flush(true);
+                IoMetrics.Add("Metadata.WriteBytes", f.Length);
+                IoMetrics.Add("Metadata.Writes");
             }
             File.Move(tmp, path, false);
         }
         finally { if (File.Exists(tmp)) File.Delete(tmp); }
     }
-    public static T? Read<T>(string path) => File.Exists(path) ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options) : default;
+    public static T? Read<T>(string path)
+    {
+        if (!File.Exists(path)) return default;
+        IoMetrics.Add("Metadata.Reads"); IoMetrics.Add("Metadata.ReadBytes", new FileInfo(path).Length);
+        return JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options);
+    }
     public static string StableId(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant()[..16];
     public static string Cell(object? value)
     {
@@ -62,6 +71,8 @@ public static class JsonFiles
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await using var f = new StreamWriter(path, false, new UTF8Encoding(true));
         foreach (var row in rows) { ct.ThrowIfCancellationRequested(); await f.WriteLineAsync(string.Join(',', row.Select(Cell))); }
+        await f.FlushAsync(ct);
+        IoMetrics.Add("Metadata.WriteBytes", f.BaseStream.Position); IoMetrics.Add("Metadata.Writes");
     }
 }
 

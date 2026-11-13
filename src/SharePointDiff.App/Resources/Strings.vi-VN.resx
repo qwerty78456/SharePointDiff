@@ -412,4 +412,5 @@ Các quyền đăng nhập cơ bản được phép đi kèm: openid, profile, e
   <data name="PermissionsUnknown" xml:space="preserve"><value>ứng dụng chưa xác định được đây có phải quyền chỉ đọc.</value></data>
   <data name="PermissionsCannotVerify" xml:space="preserve"><value>Không đọc được danh sách quyền từ thông tin đăng nhập. Ứng dụng chưa thể xác nhận app chỉ có quyền đọc nên chưa lưu đăng nhập.</value></data>
   <data name="PermissionsSessionOnly" xml:space="preserve"><value>Bạn vẫn có thể tự đăng nhập để xem và tải tệp trong cửa sổ chính. Ứng dụng không lưu đăng nhập và không tự kiểm tra khi bạn đăng nhập Windows. Ứng dụng không sửa dữ liệu trên SharePoint.</value></data>
+  <data name="ErrorRetryLater" xml:space="preserve"><value>SharePoint yêu cầu chờ lâu hơn thời gian cho phép. Hãy thử lại vào thời điểm ghi trong chi tiết lỗi.</value></data>
 </root>
