@@ -62,6 +62,13 @@ public sealed class OptimizationTests
     }
 
     [Fact]
+    public async Task MalformedServerJsonReportsTheActualEndpoint()
+    {
+        using var reader = new SharePointReader(new Tokens(), new HttpClient(new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent("not-json") })), new HttpClient());
+        var error = await Assert.ThrowsAsync<OperationException>(() => reader.GetLibrariesAsync(Fixture.Site, new Dictionary<string, string>(), default));
+        Assert.Equal("InvalidResponse", error.Code); Assert.Contains("graph.microsoft.com/v1.0/sites/", error.ItemPath);
+    }
+    [Fact]
     public async Task LongRetryAfterIsReportedWithoutRetryingEarly()
     {
         int calls = 0;
@@ -73,7 +80,8 @@ public sealed class OptimizationTests
                 Content = new StringContent("busy", Encoding.UTF8),
                 Headers = { RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddMinutes(10)) }
             };
-        })), new HttpClient()) { RetryWaitBudget = TimeSpan.FromSeconds(1) };
+        })), new HttpClient())
+        { RetryWaitBudget = TimeSpan.FromSeconds(1) };
         var error = await Assert.ThrowsAsync<OperationException>(() => reader.GetLibrariesAsync(Fixture.Site, new Dictionary<string, string>(), default));
         Assert.Equal("RetryLater", error.Code); Assert.Equal(1, calls); Assert.Contains("Retry-After", error.InnerException!.Message);
     }

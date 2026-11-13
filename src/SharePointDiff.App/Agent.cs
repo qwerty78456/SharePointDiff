@@ -444,8 +444,14 @@ internal sealed class TrayAgent : IDisposable
             string path = Path.Combine(dir, "agent-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + ".json");
             File.WriteAllText(path, JsonSerializer.Serialize(new
             {
-                result.State, result.Code, result.Path, DurationSeconds = result.Duration.TotalSeconds, NetworkWaitSeconds = result.NetworkWait.TotalSeconds, result.Attempts,
-                HashedFiles = result.Outcome?.Scan.Entries.Count(e => e.Local != null), result.Outcome?.Summary,
+                result.State,
+                result.Code,
+                result.Path,
+                DurationSeconds = result.Duration.TotalSeconds,
+                NetworkWaitSeconds = result.NetworkWait.TotalSeconds,
+                result.Attempts,
+                HashedFiles = result.Outcome?.Scan.Entries.Count(e => e.Local != null),
+                result.Outcome?.Summary,
                 GrantedPermissions = session?.PermissionReports,
                 AllowedPermissions = TokenScopes.AllowedScopes,
                 PermissionExplanation = session?.PersistenceBlocked == true ? PermissionMessages.Format(L, session.PermissionReports) : null

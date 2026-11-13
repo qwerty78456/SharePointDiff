@@ -439,4 +439,5 @@ Các quyền đăng nhập cơ bản được phép đi kèm: openid, profile, e
   <data name="ErrorDeltaExpired" xml:space="preserve"><value>SharePoint không còn chấp nhận mốc kiểm tra cũ. Cần đọc lại danh sách đầy đủ.</value></data>
   <data name="ErrorInvalidDeltaLink" xml:space="preserve"><value>SharePoint trả đường dẫn phân trang hoặc kiểm tra thay đổi không hợp lệ. Đã dừng để không gửi thông tin đăng nhập sai nơi.</value></data>
   <data name="RemoteReadSummary" xml:space="preserve"><value>Lần đọc đầy đủ gần nhất: {0} · Không tự đọc lại theo lịch.</value></data>
+  <data name="ErrorInvalidResponse" xml:space="preserve"><value>SharePoint trả dữ liệu không đọc được hoặc sai định dạng. Đã dừng yêu cầu; xem đường dẫn API và lỗi cụ thể trong chi tiết.</value></data>
 </root>

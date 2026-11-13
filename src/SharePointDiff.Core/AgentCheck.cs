@@ -56,8 +56,10 @@ public sealed class AgentCheckRunner(IRemoteReader remote, INetworkProbe probe, 
                 bool partial = outcome.Scan.Issues.Any(i => TransientLibraryCodes.Contains(i.Code) && included.Contains(i.Path));
                 if (partial && CanRetry()) { await Task.Delay(Backoff[attempt - 1], time, ct); continue; }
                 var s = outcome.Summary;
-                var state = s.HasWork ? AgentState.Pending : partial ? AgentState.Incomplete : s.Review > 0 ? AgentState.ReviewOnly : AgentState.UpToDate;
-                return Result(state, outcome, null, null, attempt, networkWait);
+                var unresolved = outcome.Scan.Issues.FirstOrDefault(i => i.Code != "HashCacheInvalid");
+                bool incomplete = partial || s.FailedLibraries > 0 || unresolved != null;
+                var state = s.HasWork ? AgentState.Pending : incomplete ? AgentState.Incomplete : s.Review > 0 ? AgentState.ReviewOnly : AgentState.UpToDate;
+                return Result(state, outcome, incomplete ? unresolved?.Code : null, incomplete ? unresolved?.Path : null, attempt, networkWait);
             }
             catch (OperationException ex) when (ex.Code == "SignInRequired") { return Result(AgentState.SignInRequired, null, ex.Code, ex.ItemPath, attempt, networkWait); }
             catch (OperationException ex) when (NotConfiguredCodes.Contains(ex.Code)) { return Result(AgentState.NotConfigured, null, ex.Code, ex.ItemPath, attempt, networkWait); }

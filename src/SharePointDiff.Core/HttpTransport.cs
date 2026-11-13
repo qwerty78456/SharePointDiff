@@ -14,7 +14,8 @@ internal static class HttpTransport
         KeepAlivePingDelay = TimeSpan.FromSeconds(30),
         KeepAlivePingTimeout = TimeSpan.FromSeconds(15),
         ConnectTimeout = TimeSpan.FromSeconds(30),
-        UseCookies = false
+        UseCookies = false,
+        MaxResponseDrainSize = json ? 8192 : 0
     };
     internal static HttpClient Client(bool json) => new(Handler(json))
     {

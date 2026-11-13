@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text;
 
 namespace SharePointDiff.Core;
 
@@ -83,7 +84,18 @@ public sealed partial class SharePointReader : IRemoteReader, IDisposable
             }
             if (!response.IsSuccessStatusCode && status is not (301 or 302 or 303 or 307 or 308))
             {
-                string body = await response.Content.ReadAsStringAsync(ct);
+                string body;
+                using (var bodyDeadline = new Deadline(ct, RequestTimeout, Time))
+                {
+                    try
+                    {
+                        await using var bodyStream = new CountingReadStream(await response.Content.ReadAsStreamAsync(bodyDeadline.Token), "Network.ErrorDecodedBytes");
+                        using var bodyReader = new StreamReader(bodyStream, Encoding.UTF8);
+                        char[] prefix = new char[8000]; int length = await bodyReader.ReadBlockAsync(prefix.AsMemory(), bodyDeadline.Token);
+                        body = new string(prefix, 0, length);
+                    }
+                    catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { response.Dispose(); throw new OperationException("RequestTimeout", new Uri(url).GetLeftPart(UriPartial.Path), ex); }
+                }
                 string requestId = response.Headers.TryGetValues("request-id", out var ids) ? string.Join(',', ids) : "—";
                 response.Dispose();
                 throw new OperationException(status == 403 ? "AccessDenied" : status == 404 ? "RemoteMissing" : status == 410 && new Uri(url).AbsolutePath.Contains("/delta", StringComparison.Ordinal) ? "DeltaExpired" : status is 429 or >= 500 ? "ServiceUnavailable" : "HttpError", new Uri(url).GetLeftPart(UriPartial.Path),
@@ -106,17 +118,23 @@ public sealed partial class SharePointReader : IRemoteReader, IDisposable
             return json.RootElement.Clone();
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new OperationException("RequestTimeout", url, ex); }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException) { throw new OperationException("InvalidResponse", uri.GetLeftPart(UriPartial.Path), ex); }
     }
     private static string? Text(JsonElement e, string name) => e.TryGetProperty(name, out var p) && p.ValueKind != JsonValueKind.Null ? p.ToString() : null;
     private static bool Has(JsonElement e, string name) => e.TryGetProperty(name, out _);
     private async Task<List<JsonElement>> PagesAsync(string url, CancellationToken ct)
     {
         var items = new List<JsonElement>();
+        var expected = new Uri(url); var seen = new HashSet<string>();
         string? next = url;
         while (next != null)
         {
+            var uri = new Uri(next);
+            if (uri.Scheme != "https" || uri.Authority != expected.Authority || uri.UserInfo.Length != 0 ||
+                !uri.AbsolutePath.Equals(expected.AbsolutePath, StringComparison.OrdinalIgnoreCase) || !seen.Add(next) || seen.Count > 100000)
+                throw new OperationException("InvalidDeltaLink", expected.GetLeftPart(UriPartial.Path));
             var page = await GetAsync(next, ct);
-            if (!page.TryGetProperty("value", out var values)) throw new OperationException("IncompleteInventory");
+            if (!page.TryGetProperty("value", out var values) || values.ValueKind != JsonValueKind.Array) throw new OperationException("IncompleteInventory", expected.GetLeftPart(UriPartial.Path));
             items.AddRange(values.EnumerateArray().Select(x => x.Clone()));
             next = Text(page, "@odata.nextLink") ?? Text(page, "odata.nextLink");
         }
@@ -313,7 +331,9 @@ public sealed partial class SharePointReader : IRemoteReader, IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(partialPath)!);
         string statePath = partialPath + ".json";
-        var state = JsonFiles.Read<PartialState>(statePath);
+        PartialState? state;
+        try { state = JsonFiles.Read<PartialState>(statePath); }
+        catch (JsonException) { state = null; IoMetrics.Add("Cache.InvalidPartialStates"); }
         // Same bytes: same size and, when both sides know it, the same content hash (a metadata-only edit changes the ETag, not the bytes).
         bool resume = state != null && state.Size == file.Size &&
             (state.QuickXorHash is { Length: > 0 } saved && file.QuickXorHash is { Length: > 0 } current ? saved == current : state.ETag == file.ETag);
@@ -322,22 +342,32 @@ public sealed partial class SharePointReader : IRemoteReader, IDisposable
         long initial = resume ? writer.Output.Length : 0;
         if (initial > file.Size) initial = 0;
         await writer.InitializeAsync(initial, ct);
-        for (int attempt = 1; ; attempt++)
+        int attempt = 0;
+        try
         {
-            long offset = writer.Output.Length;
-            await JsonFiles.WriteAsync(statePath, new PartialState(file.ETag, file.Size, file.QuickXorHash, file.LibraryId), ct);
-            try
+            for (attempt = 1; ; attempt++)
             {
-                await DownloadOnceAsync(file, writer, offset, received, progress, ct);
-                await writer.Output.FlushAsync(ct); writer.Output.Flush(true);
-                return new(received.Value, attempt, stalls, writer.Hashes.Finish());
+                long offset = writer.Output.Length;
+                await JsonFiles.WriteAsync(statePath, new PartialState(file.ETag, file.Size, file.QuickXorHash, file.LibraryId), ct);
+                try
+                {
+                    await DownloadOnceAsync(file, writer, offset, received, progress, ct);
+                    await writer.Output.FlushAsync(ct); writer.Output.Flush(true);
+                    return new(received.Value, attempt, stalls, writer.Hashes.Finish());
+                }
+                catch (OperationException ex) when (Resumable.Contains(ex.Code) && attempt < ResumeAttempts && !ct.IsCancellationRequested)
+                {
+                    if (ex.Code == "DownloadStalled") stalls++;
+                    double wait = Math.Min(RetryDelay.TotalSeconds * Math.Pow(2, attempt - 1), 60);
+                    await Task.Delay(TimeSpan.FromSeconds(wait), Time, ct);
+                }
             }
-            catch (OperationException ex) when (Resumable.Contains(ex.Code) && attempt < ResumeAttempts && !ct.IsCancellationRequested)
-            {
-                if (ex.Code == "DownloadStalled") stalls++;
-                double wait = Math.Min(RetryDelay.TotalSeconds * Math.Pow(2, attempt - 1), 60);
-                await Task.Delay(TimeSpan.FromSeconds(wait), Time, ct);
-            }
+        }
+        catch (Exception ex)
+        {
+            if (ex is OperationException { Code: "DownloadStalled" }) stalls++;
+            ex.Data["NetworkBytes"] = received.Value; ex.Data["Attempts"] = attempt; ex.Data["Stalls"] = stalls;
+            throw;
         }
     }
     private async Task DownloadOnceAsync(RemoteFile file, DownloadWriter writer, long offset, StrongBox<long> received, IProgress<OperationProgress>? progress, CancellationToken ct)
@@ -407,25 +437,25 @@ public sealed partial class SharePointReader : IRemoteReader, IDisposable
         byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024); long written = 0; long last = Environment.TickCount64;
         try
         {
-        while (true)
-        {
-            int n;
-            // Only the network read is classified; a failure writing the local file propagates unchanged and is never retried.
-            using (var idle = new Deadline(ct, StallTimeout, Time))
+            while (true)
             {
-                try { n = await input.ReadAsync(buffer, idle.Token); }
-                catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new OperationException("DownloadStalled", file.RelativePath, ex); }
-                catch (Exception ex) when (ex is IOException or HttpRequestException && !ct.IsCancellationRequested) { throw new OperationException("DownloadInterrupted", file.RelativePath, ex); }
+                int n;
+                // Only the network read is classified; a failure writing the local file propagates unchanged and is never retried.
+                using (var idle = new Deadline(ct, StallTimeout, Time))
+                {
+                    try { n = await input.ReadAsync(buffer, idle.Token); }
+                    catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new OperationException("DownloadStalled", file.RelativePath, ex); }
+                    catch (Exception ex) when (ex is IOException or HttpRequestException && !ct.IsCancellationRequested) { throw new OperationException("DownloadInterrupted", file.RelativePath, ex); }
+                }
+                if (n == 0) break;
+                received.Value += n; IoMetrics.Add("Network.FilePayloadBytes", n);
+                if (offset + written + n > file.Size) throw new OperationException("HashMismatch", file.RelativePath);
+                await output.WriteAsync(buffer.AsMemory(0, n), ct); writer.Hashes.Append(buffer.AsSpan(0, n)); written += n;
+                IoMetrics.Add("Content.WriteBytes", n);
+                if (Environment.TickCount64 - last > 150) { progress?.Report(new("Downloading", Path: file.RelativePath, Bytes: offset + written, TotalBytes: file.Size)); last = Environment.TickCount64; }
             }
-            if (n == 0) break;
-            received.Value += n; IoMetrics.Add("Network.FilePayloadBytes", n);
-            if (offset + written + n > file.Size) throw new OperationException("HashMismatch", file.RelativePath);
-            await output.WriteAsync(buffer.AsMemory(0, n), ct); writer.Hashes.Append(buffer.AsSpan(0, n)); written += n;
-            IoMetrics.Add("Content.WriteBytes", n);
-            if (Environment.TickCount64 - last > 150) { progress?.Report(new("Downloading", Path: file.RelativePath, Bytes: offset + written, TotalBytes: file.Size)); last = Environment.TickCount64; }
-        }
-        if (output.Length != file.Size) throw new OperationException("DownloadInterrupted", file.RelativePath);
-        await output.FlushAsync(ct);
+            if (output.Length != file.Size) throw new OperationException("DownloadInterrupted", file.RelativePath);
+            await output.FlushAsync(ct);
         }
         finally { ArrayPool<byte>.Shared.Return(buffer); }
     }

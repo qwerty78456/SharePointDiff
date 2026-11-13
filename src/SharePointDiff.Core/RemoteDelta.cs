@@ -7,11 +7,13 @@ public sealed partial class SharePointReader
     private const int StateVersion = 2;
     private readonly Dictionary<string, string> siteIds = new(StringComparer.OrdinalIgnoreCase);
     private sealed record RemoteState(int FormatVersion, string Generation, string Account, string Site, string Library, string Drive, string Folder,
-        string SchemaId, Dictionary<string, JsonElement> Items, Dictionary<string, JsonElement> ListItems,
+        string SchemaId, string QueryKey, Dictionary<string, JsonElement> Items, Dictionary<string, JsonElement> ListItems,
         Dictionary<string, MetadataSnapshot> Metadata, DateTimeOffset FullReadAt);
     private sealed record RemoteCursor(int FormatVersion, string Generation, string Account, string DriveLink, string ListLink, string? PreviousGeneration = null);
     private sealed record SelectionState(string Account, string Selection);
+    private sealed record DeltaCapability(string Account, string Library, string Drive);
     private sealed record DeltaPage(Dictionary<string, JsonElement> Items, HashSet<string> Changed, string Link);
+    private static string QueryKey => JsonFiles.StableId("graph-v1:" + Selection + "|list-v1:id,eTag,deleted|rest-fields-v1");
     private sealed record LibraryPass(RemoteState State, string DriveLink, string ListLink, IReadOnlyList<RemoteFile> Files,
         IReadOnlyList<string> Folders, IReadOnlyList<OperationIssue> Issues, bool Changed, bool Incremental);
 
@@ -38,9 +40,22 @@ public sealed partial class SharePointReader
         foreach (var library in libraries)
         {
             ct.ThrowIfCancellationRequested(); progress?.Report(new("ReadLibrary", completed, libraries.Count, library.Title));
+            string directory = Path.Combine(options.StateDirectory, "remote-state", JsonFiles.StableId(library.Id + "|" + library.DriveId));
+            string capabilityPath = Path.Combine(directory, "list-delta-unavailable.json");
+            void AddLegacy(RemoteInventory full)
+            {
+                files.AddRange(full.Files); folders.AddRange(full.Folders); issues.AddRange(full.Issues); changed = true;
+                if (full.Issues.Count == 0 && full.Files.All(f => f.Metadata.Complete) && full.Folders.Contains(library.LocalFolder))
+                    reads.Add(new(library.Id, false, Time.GetUtcNow()));
+            }
             try
             {
-                string directory = Path.Combine(options.StateDirectory, "remote-state", JsonFiles.StableId(library.Id + "|" + library.DriveId));
+                DeltaCapability? unavailable;
+                try { unavailable = JsonFiles.Read<DeltaCapability>(capabilityPath); } catch (JsonException) { unavailable = null; }
+                if (!options.ReadAll && unavailable == new DeltaCapability(account, library.Id, library.DriveId))
+                {
+                    AddLegacy(await GetInventoryAsync(siteUrl, [library], progress, ct)); completed++; continue;
+                }
                 var (saved, cursor) = options.ReadAll ? (null, null) : LoadState(directory, account, siteUrl, library);
                 LibraryPass pass;
                 bool fallbackUsed = false;
@@ -57,10 +72,14 @@ public sealed partial class SharePointReader
                     pass = await ReadLibraryPassAsync(siteUrl, siteId, library, null, null, ct);
                 }
                 files.AddRange(pass.Files); folders.AddRange(pass.Folders); issues.AddRange(pass.Issues);
-                reads.Add(new(library.Id, pass.Incremental, pass.State.FullReadAt));
+                if (pass.Issues.Count == 0) reads.Add(new(library.Id, pass.Incremental, pass.State.FullReadAt));
+                else if (saved != null) reads.Add(new(library.Id, true, saved.FullReadAt));
                 changed |= pass.Changed || pass.Issues.Count > 0;
                 if (pass.Issues.Count == 0 && pass.Files.All(f => f.Metadata.Complete))
+                {
                     await SaveStateAsync(directory, pass, cursor, ct);
+                    if (File.Exists(capabilityPath)) File.Delete(capabilityPath);
+                }
             }
             catch (OperationCanceledException) { throw; }
             catch (OperationException ex) when (ex.Code is "SignInRequired" or "TokenCacheUnavailable" or "AuthenticationFailed" or "AuthNetworkFailed") { throw; }
@@ -68,8 +87,9 @@ public sealed partial class SharePointReader
             {
                 // Some services do not expose list delta. A full, read-only scan remains usable there.
                 var full = await GetInventoryAsync(siteUrl, [library], progress, ct);
-                files.AddRange(full.Files); folders.AddRange(full.Folders); issues.AddRange(full.Issues); changed = true;
-                reads.Add(new(library.Id, false, Time.GetUtcNow()));
+                AddLegacy(full);
+                if (ex.ItemPath?.Contains("/lists/", StringComparison.Ordinal) == true && ex.ItemPath.EndsWith("/items/delta", StringComparison.Ordinal))
+                    await JsonFiles.WriteAsync(capabilityPath, new DeltaCapability(account, library.Id, library.DriveId), ct);
             }
             catch (Exception ex) when (ex is OperationException or HttpRequestException or IOException or UnauthorizedAccessException or JsonException)
             { issues.Add(new(ex is OperationException op ? op.Code : "ReadLibraryFailed", library.Title, ex.ToString())); changed = true; }
@@ -90,7 +110,7 @@ public sealed partial class SharePointReader
             if (cursor?.FormatVersion != StateVersion || cursor.Account != account || !Guid.TryParseExact(cursor.Generation, "N", out _)) return (null, null);
             var state = JsonFiles.Read<RemoteState>(Path.Combine(directory, "snapshots", cursor.Generation + ".json"));
             if (state?.FormatVersion != StateVersion || state.Generation != cursor.Generation || state.Account != account || state.Site != site ||
-                state.Library != library.Id || state.Drive != library.DriveId || state.Folder != library.LocalFolder || state.Items == null || state.ListItems == null || state.Metadata == null) return (null, null);
+                state.Library != library.Id || state.Drive != library.DriveId || state.Folder != library.LocalFolder || state.QueryKey != QueryKey || state.Items == null || state.ListItems == null || state.Metadata == null) return (null, null);
             return (state, cursor);
         }
         catch (Exception ex) when (ex is JsonException or OperationException { Code: "MetadataStoreCorrupt" }) { IoMetrics.Add("Remote.InvalidState"); return (null, null); }
@@ -140,11 +160,12 @@ public sealed partial class SharePointReader
             issues.Add(new("CountChanged", library.Title));
         // A reference missing from either complete feed is uncertainty, never an empty library.
         if (files.Any(f => !list.Items.ContainsKey(f.ListItemId))) throw new OperationException("IncompleteInventory", library.Title);
+        if (files.GroupBy(f => SafePaths.Key(f.RelativePath)).Any(g => g.Count() > 1)) issues.Add(new("PathCollision", library.Title));
         var liveListIds = list.Items.Keys.ToHashSet();
         foreach (string deleted in metadata.Keys.Where(k => !liveListIds.Contains(k)).ToArray()) metadata.Remove(deleted);
         bool changed = saved == null || fullMetadata || drive.Changed.Count > 0 || list.Changed.Count > 0;
         var state = new RemoteState(StateVersion, changed ? Guid.NewGuid().ToString("N") : saved!.Generation, tokens.CacheIdentity!, site, library.Id,
-            library.DriveId, library.LocalFolder, schemaId, drive.Items, list.Items, metadata, saved == null ? Time.GetUtcNow() : saved.FullReadAt);
+            library.DriveId, library.LocalFolder, schemaId, QueryKey, drive.Items, list.Items, metadata, saved == null ? Time.GetUtcNow() : saved.FullReadAt);
         return new(state, drive.Link, list.Link, files, folders, issues, changed, saved != null);
     }
     private static HashSet<string> MetadataIds(DeltaPage drive, DeltaPage list, IReadOnlyDictionary<string, string> paths, IReadOnlyDictionary<string, string> oldPaths)

@@ -22,7 +22,7 @@ public sealed class RemoteDeltaTests
         private readonly Dictionary<string, (long Version, JsonElement Item)> listChanges = [];
         public readonly List<string> Requests = [];
         public long Version;
-        public bool ExtraColumn, MissingColumn, MissingMetadata, ExpireOnce, AlwaysExpire, BadParentOnce, EmptyPageOnce, MaliciousLink;
+        public bool ExtraColumn, MissingColumn, MissingMetadata, ExpireOnce, AlwaysExpire, BadParentOnce, EmptyPageOnce, MaliciousLink, ListUnavailable;
         public Server()
         {
             Items["root"] = JsonSerializer.SerializeToElement(new { id = "root", root = new { }, folder = new { } });
@@ -32,9 +32,16 @@ public sealed class RemoteDeltaTests
         public int FullDriveCalls => Requests.Count(r => r.Contains("/drives/drive/root/delta?", StringComparison.Ordinal) && !r.Contains("cursor=", StringComparison.Ordinal) && !r.Contains("page=", StringComparison.Ordinal));
         private static JsonElement File(string id, string name, string parent, string listId) => JsonSerializer.SerializeToElement(new
         {
-            id, name, size = 3, file = new { hashes = new { quickXorHash = Fixture.Remote("x", [1, 2, 3]).QuickXorHash } },
-            parentReference = new { id = parent }, sharepointIds = new { listItemId = listId }, eTag = "content-etag",
-            createdDateTime = "2025-01-01T00:00:00Z", lastModifiedDateTime = "2026-01-01T00:00:00Z", webUrl = Fixture.Site + "/" + name
+            id,
+            name,
+            size = 3,
+            file = new { hashes = new { quickXorHash = Fixture.Remote("x", [1, 2, 3]).QuickXorHash } },
+            parentReference = new { id = parent },
+            sharepointIds = new { listItemId = listId },
+            eTag = "content-etag",
+            createdDateTime = "2025-01-01T00:00:00Z",
+            lastModifiedDateTime = "2026-01-01T00:00:00Z",
+            webUrl = Fixture.Site + "/" + name
         });
         public void MetadataOnly(string revision) { Version++; Revisions["1"] = revision; listChanges["1"] = (Version, JsonSerializer.SerializeToElement(new { id = "1", eTag = "list-" + Version })); }
         public void PutFileInFolder()
@@ -79,6 +86,7 @@ public sealed class RemoteDeltaTests
             if (path.Contains("/delta", StringComparison.Ordinal))
             {
                 bool drive = path.Contains("/drives/", StringComparison.Ordinal);
+                if (!drive && ListUnavailable) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("unsupported") });
                 long since = query.Contains("cursor=", StringComparison.Ordinal) ? long.Parse(query[(query.IndexOf("cursor=", StringComparison.Ordinal) + 7)..].Split('&')[0]) : -1;
                 if (drive && since >= 0 && (ExpireOnce || AlwaysExpire)) { ExpireOnce = false; return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Gone) { Content = new StringContent("expired") }); }
                 var endpoint = "https://graph.microsoft.com" + path;
@@ -190,6 +198,18 @@ public sealed class RemoteDeltaTests
         Assert.Equal(before, await File.ReadAllBytesAsync(cursor));
         server.MissingMetadata = false;
         Assert.Equal("B", (await Scan(reader, workspace)).Files.Single().Metadata.Fields.GetProperty("Revision").GetString());
+    }
+    [Fact]
+    public async Task UnavailableListDeltaIsNotProbedWithAnExtraFullReadOnEveryScan()
+    {
+        using var f = new Fixture(); var workspace = new Workspace(Fixture.Site, f.Root); using var server = new Server { ListUnavailable = true }; using var reader = Reader(new(), server);
+        Assert.Empty((await Scan(reader, workspace)).Issues);
+        int before = server.FullDriveCalls;
+        Assert.Empty((await Scan(reader, workspace)).Issues);
+        Assert.Equal(before + 1, server.FullDriveCalls);
+        server.ListUnavailable = false;
+        Assert.Empty((await Scan(reader, workspace, all: true)).Issues);
+        Assert.True((await Scan(reader, workspace)).Reads!.Single().Incremental);
     }
     [Fact]
     public async Task EmptyPageIsFollowedAndUntrustedDeltaUrlIsNeverRequested()

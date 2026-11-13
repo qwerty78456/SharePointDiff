@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Collections.Concurrent;
 
 namespace SharePointDiff.Core;
 
@@ -11,8 +12,18 @@ internal sealed class SchemaStorage : IDisposable
     private readonly SchemaStorage? previous;
     private readonly string? root;
     private readonly Dictionary<string, JsonElement> schemas = new(StringComparer.Ordinal);
-    private readonly Dictionary<JsonElement, string> ids = [];
-    private SchemaStorage(string? root) { previous = Active.Value; this.root = root; Active.Value = this; }
+    private readonly ConcurrentDictionary<JsonElement, string> ids;
+    private readonly ConcurrentDictionary<string, byte> verified;
+    private readonly ConcurrentDictionary<string, JsonElement> catalog;
+    private SchemaStorage(string? root)
+    {
+        previous = Active.Value; this.root = root;
+        ids = previous != null && previous.root == root ? previous.ids : new();
+        verified = previous != null && previous.root == root ? previous.verified : new();
+        catalog = previous != null && previous.root == root ? previous.catalog : new();
+        Active.Value = this;
+    }
+    internal static SchemaStorage Begin(Workspace workspace) => new(Path.Combine(workspace.DataRoot, "schemas"));
     public static SchemaStorage For(string path)
     {
         var directory = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(path))!);
@@ -58,7 +69,17 @@ internal sealed class SchemaStorage : IDisposable
         foreach (var (id, schema) in schemas)
         {
             string path = Path.Combine(root, id + ".json");
-            if (File.Exists(path)) continue;
+            if (File.Exists(path))
+            {
+                if (!verified.ContainsKey(id))
+                {
+                    if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new OperationException("MetadataStoreCorrupt", path);
+                    ReadValidated(path, id);
+                    verified.TryAdd(id, 0);
+                }
+                catalog.TryAdd(id, schema);
+                continue;
+            }
             try { await JsonFiles.WriteNewAsync(path, schema, ct); }
             catch (IOException) when (File.Exists(path))
             {
@@ -66,19 +87,31 @@ internal sealed class SchemaStorage : IDisposable
                 var existing = JsonFiles.Read<JsonElement>(path);
                 if (existing.ValueKind != JsonValueKind.Array || Hash(existing) != id) throw new OperationException("MetadataStoreCorrupt", path);
             }
+            verified.TryAdd(id, 0);
+            catalog.TryAdd(id, schema);
         }
     }
     private JsonElement Load(string id)
     {
         if (root == null || id.Length != 64 || id.Any(c => !char.IsAsciiHexDigit(c))) throw new OperationException("MetadataStoreCorrupt", root);
-        if (schemas.TryGetValue(id, out var cached)) return cached;
+        if (catalog.TryGetValue(id, out var cached)) return cached;
         string path = Path.Combine(root, id + ".json");
         if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new OperationException("MetadataStoreCorrupt", path);
-        IoMetrics.Add("Metadata.Reads"); IoMetrics.Add("Metadata.ReadBytes", new FileInfo(path).Length);
-        using var json = JsonDocument.Parse(File.ReadAllText(path));
-        var schema = json.RootElement.Clone();
-        if (schema.ValueKind != JsonValueKind.Array || Hash(schema) != id) throw new OperationException("MetadataStoreCorrupt", path);
-        return schemas[id] = schema;
+        var schema = ReadValidated(path, id);
+        verified.TryAdd(id, 0);
+        catalog.TryAdd(id, schema);
+        return schema;
+    }
+    private static JsonElement ReadValidated(string path, string id)
+    {
+        try
+        {
+            IoMetrics.Add("Metadata.Reads"); IoMetrics.Add("Metadata.ReadBytes", new FileInfo(path).Length);
+            using var json = JsonDocument.Parse(File.ReadAllText(path));
+            if (json.RootElement.ValueKind != JsonValueKind.Array || Hash(json.RootElement) != id) throw new OperationException("MetadataStoreCorrupt", path);
+            return json.RootElement.Clone();
+        }
+        catch (JsonException ex) { throw new OperationException("MetadataStoreCorrupt", path, ex); }
     }
     public void Dispose() => Active.Value = previous;
     internal sealed class MetadataConverter : JsonConverter<MetadataSnapshot>

@@ -36,7 +36,7 @@ function Get-Snapshot {
 }
 function Invoke-Run([string]$Name, [string[]]$Arguments, [int]$ExpectedExit, [string]$ChecksFile) {
     $before = @(Get-ChildItem -LiteralPath $logs -Filter 'error-*.txt' -ErrorAction SilentlyContinue).Count
-    $process = Start-Process -FilePath $exePath -ArgumentList $Arguments -PassThru -Environment @{ SPDIFF_SETTINGS_PATH = $settings }
+    $process = Start-Process -FilePath $exePath -ArgumentList $Arguments -WindowStyle Hidden -PassThru -Environment @{ SPDIFF_SETTINGS_PATH = $settings }
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) { $process.Kill($true); return [pscustomobject]@{ Run = $Name; Passed = $false; Detail = "timed out after $TimeoutSeconds s" } }
     $detail = "exit $($process.ExitCode) (expected $ExpectedExit)"; $passed = $process.ExitCode -eq $ExpectedExit
     if ($ChecksFile) {

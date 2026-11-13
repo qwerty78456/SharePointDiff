@@ -7,6 +7,16 @@ namespace SharePointDiff.Tests;
 public sealed class ManifestOptimizationTests
 {
     [Fact]
+    public async Task SharedSchemaIsReadOnlyOnceAcrossManyJournalOrBackupRecordsInOneOperation()
+    {
+        using var f = new Fixture(); var workspace = new Workspace(Fixture.Site, f.Root); var remote = Fixture.Remote("Docs/a", [1]);
+        string record = Path.Combine(workspace.DataRoot, "sample-record.json");
+        await JsonFiles.WriteAsync(record, new InstalledRecord(remote.RelativePath, "sha", remote.QuickXorHash, remote.ETag, DateTimeOffset.Now, remote));
+        using var metrics = IoMetrics.Begin("SchemaReads"); using var schemas = SchemaStorage.Begin(workspace);
+        for (int i = 0; i < 100; i++) Assert.NotNull(JsonFiles.Read<InstalledRecord>(record));
+        Assert.Equal(101, metrics.Snapshot().Counters["Metadata.Reads"]);
+    }
+    [Fact]
     public async Task ApplyLoadsManifestOnceAndCheckpointsInBatchesWithOneSharedSchema()
     {
         using var f = new Fixture(); var remote = new FakeRemote();
@@ -65,14 +75,16 @@ public sealed class ManifestOptimizationTests
         Assert.Equal("term", installed.Remote.Metadata.Fields.GetProperty("Taxonomy").GetProperty("TermGuid").GetString());
     }
 
-    [Fact]
-    public async Task MissingSharedSchemaFailsClosedInsteadOfDroppingMetadata()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingOrCorruptSharedSchemaFailsClosedInsteadOfDroppingMetadata(bool corrupt)
     {
         using var f = new Fixture(); var workspace = new Workspace(Fixture.Site, f.Root);
         var remote = Fixture.Remote("Docs/a", [1]);
         await ManifestStore.SaveAsync(workspace, remote, new(1, remote.QuickXorHash!, "sha"), default);
         string schema = Directory.GetFiles(Path.Combine(workspace.DataRoot, "schemas")).Single();
-        File.Delete(schema);
+        if (corrupt) await File.WriteAllTextAsync(schema, "{broken"); else File.Delete(schema);
         var error = await Assert.ThrowsAsync<OperationException>(() => ManifestStore.ReadAllAsync(workspace, default));
         Assert.Equal("MetadataStoreCorrupt", error.Code);
     }

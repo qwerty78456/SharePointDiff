@@ -27,7 +27,8 @@ internal sealed class ScriptedStream(byte[] prefix, Func<CancellationToken, Task
     public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
     public override bool CanRead => true; public override bool CanSeek => false; public override bool CanWrite => false;
     public override long Length => throw new NotSupportedException(); public override long Position { get => position; set => throw new NotSupportedException(); }
-    public override void Flush() { } public override long Seek(long o, SeekOrigin s) => throw new NotSupportedException();
+    public override void Flush() { }
+    public override long Seek(long o, SeekOrigin s) => throw new NotSupportedException();
     public override void SetLength(long v) => throw new NotSupportedException(); public override void Write(byte[] b, int o, int c) => throw new NotSupportedException();
 }
 internal sealed class RecordingHandler(Func<HttpRequestMessage, int, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
@@ -195,9 +196,16 @@ internal sealed class FakeSharePoint
         var (bytes, etag, _) = Files[name]; var q = new QuickXorHasher(); q.Append(bytes);
         return new
         {
-            id = Id(name), name, size = bytes.Length, eTag = etag, file = new { hashes = new { quickXorHash = q.Finish() } },
-            parentReference = new { id = "root", path = "/drives/drive/root:" }, sharepointIds = new { listItemId = (Files.Keys.ToList().IndexOf(name) + 1).ToString() },
-            createdDateTime = "2025-01-02T03:04:05Z", lastModifiedDateTime = "2026-01-02T03:04:05Z", webUrl = "https://contoso.sharepoint.com/" + name
+            id = Id(name),
+            name,
+            size = bytes.Length,
+            eTag = etag,
+            file = new { hashes = new { quickXorHash = q.Finish() } },
+            parentReference = new { id = "root", path = "/drives/drive/root:" },
+            sharepointIds = new { listItemId = (Files.Keys.ToList().IndexOf(name) + 1).ToString() },
+            createdDateTime = "2025-01-02T03:04:05Z",
+            lastModifiedDateTime = "2026-01-02T03:04:05Z",
+            webUrl = "https://contoso.sharepoint.com/" + name
         };
     }
     private object Metadata(string name) => new { Id = Files.Keys.ToList().IndexOf(name) + 1, Revision = Files[name].Revision, FieldValuesAsText = new { Revision = Files[name].Revision } };

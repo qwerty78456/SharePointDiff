@@ -15,6 +15,7 @@ public sealed partial class DiffService(IRemoteReader remote)
         using var measurements = IoMetrics.Begin("Scan");
         var workspace = new Workspace(site, root);
         using var gate = WorkspaceLock.Acquire(workspace);
+        using var schemaScope = SchemaStorage.Begin(workspace);
         options ??= new();
         var inventory = await remote.GetInventoryAsync(site, libraries, progress, ct, new(workspace.DataRoot, options.ReadAllRemote));
         await using var manifest = await ManifestSession.OpenAsync(workspace, ct);

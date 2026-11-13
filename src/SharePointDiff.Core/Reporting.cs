@@ -51,17 +51,17 @@ public static class ReportWriter
     {
         IEnumerable<IEnumerable<object?>> Rows()
         {
-        yield return new object?[] { "Path", "InternalName", "DisplayName", "Type", "RawValue", "DisplayValue", "Complete" };
-        foreach (var f in files)
-        {
-            foreach (var col in f.Metadata.Columns.EnumerateArray())
+            yield return new object?[] { "Path", "InternalName", "DisplayName", "Type", "RawValue", "DisplayValue", "Complete" };
+            foreach (var f in files)
             {
-                string n = col.GetProperty("InternalName").GetString()!;
-                string raw = MetadataFields.TryGet(f.Metadata.Fields, col, out var v) ? v.GetRawText() : "";
-                string display = MetadataFields.TryGet(f.Metadata.DisplayValues, col, out var d) ? d.ToString() : "";
-                yield return new object?[] { f.RelativePath, n, col.GetProperty("Title").ToString(), col.GetProperty("TypeAsString").ToString(), raw, display, f.Metadata.Complete };
+                foreach (var col in f.Metadata.Columns.EnumerateArray())
+                {
+                    string n = col.GetProperty("InternalName").GetString()!;
+                    string raw = MetadataFields.TryGet(f.Metadata.Fields, col, out var v) ? v.GetRawText() : "";
+                    string display = MetadataFields.TryGet(f.Metadata.DisplayValues, col, out var d) ? d.ToString() : "";
+                    yield return new object?[] { f.RelativePath, n, col.GetProperty("Title").ToString(), col.GetProperty("TypeAsString").ToString(), raw, display, f.Metadata.Complete };
+                }
             }
-        }
         }
         return JsonFiles.CsvAsync(path, Rows(), ct);
     }

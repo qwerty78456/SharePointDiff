@@ -213,6 +213,7 @@ public sealed class MainViewModel : Observable, IDisposable
     }
     private async Task ConnectAsync(CancellationToken ct)
     {
+        using var measurements = IoMetrics.Begin("Connect");
         if (ProfileIndex < 0 || ProfileIndex >= Profiles.Count) throw new OperationException("InvalidProfile");
         string site = SafePaths.SiteUri(SiteUrl).ToString().TrimEnd('/');
         if (!Directory.Exists(LocalRoot)) throw new OperationException("InvalidRoot");
@@ -246,6 +247,7 @@ public sealed class MainViewModel : Observable, IDisposable
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ErrorDetail += Environment.NewLine + L["LogWriteFailed"] + ": " + ex.Message; }
         }
         RefreshStartup();
+        statistics = measurements.Snapshot(); Raise(nameof(IoSummary));
     }
     private async Task ForgetSignInAsync(CancellationToken ct)
     {
@@ -316,7 +318,7 @@ public sealed class MainViewModel : Observable, IDisposable
             string errors = Path.Combine(reportDirectory, "errors");
             ErrorDetail = Directory.Exists(errors) ? string.Join(Environment.NewLine, Directory.GetFiles(errors, "*.json").Select(File.ReadAllText)) : Error;
         }
-        SetStatus(result.Cancelled ? "Cancelled" : "ApplyComplete", success.Count, result.Results.Count);
+        SetStatus(result.Cancelled || result.StopReason != null ? "Cancelled" : "ApplyComplete", success.Count, result.Results.Count);
         WorkspaceChanged?.Invoke();
         await File.WriteAllTextAsync(Path.Combine(reportDirectory, "summary.txt"), L.Format("ReportSummary", success.Count, failed.Length, result.Results.Sum(x => x.BytesDownloaded), reportDirectory), CancellationToken.None);
         RefreshPlan();
@@ -337,6 +339,18 @@ public sealed class MainViewModel : Observable, IDisposable
         catch (Exception ex) when (ex is OperationException or IOException or UnauthorizedAccessException or System.Net.Http.HttpRequestException)
         { SetError(ex); SetStatus("Failed"); }
         finally { Busy = false; cancellation.Dispose(); cancellation = null; Raise(nameof(Indeterminate)); RefreshPlan(); }
+    }
+    internal Task BackgroundWorkForSmokeAsync()
+    {
+        if (!Demo) throw new InvalidOperationException("Synthetic work requires demo mode");
+        return RunAsync(async ct =>
+        {
+            var progress = CreateProgress();
+            await Task.Run(async () =>
+            {
+                for (int i = 0; i < 200; i++) { ct.ThrowIfCancellationRequested(); progress.Report(new("Hashing", i, 200, "synthetic")); await Task.Delay(50, ct); }
+            }, ct);
+        });
     }
     private void SetError(Exception ex)
     {

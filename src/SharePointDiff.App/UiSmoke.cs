@@ -56,6 +56,27 @@ internal static class UiSmoke
             }
             checks["PermissionErrorRelocalizes"] = true;
             vm.SetLocalizedError(() => "");
+            vm.RehashAllLocal = true; vm.ReadAllRemote = true; window.CheckOptionsPanel.IsExpanded = true;
+            foreach (var language in new[] { 0, 1 })
+            {
+                vm.LanguageIndex = language;
+                await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                Save(window, Path.Combine(directory, language == 0 ? "vi-check-options.png" : "en-check-options.png"));
+                if (!vm.RehashAllLocal || !vm.ReadAllRemote || !first.Selected) throw new InvalidOperationException("Full-check options or selection lost on language switch");
+                if (vm.L["SavedHash"] == "SavedHash" || vm.L["ReadAllRemote"] == "ReadAllRemote") throw new InvalidOperationException("Missing optimization labels");
+            }
+            window.CheckOptionsPanel.IsExpanded = false; vm.RehashAllLocal = false; vm.ReadAllRemote = false;
+            checks["OptimizationOptionsRelocalizeAndPreserveSelection"] = true;
+            var background = vm.BackgroundWorkForSmokeAsync();
+            await Task.Delay(150);
+            if (!vm.Busy) throw new InvalidOperationException("Background work did not begin");
+            vm.LanguageIndex = 0; vm.Filter = "Review_09999"; vm.FilesView.Refresh();
+            await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            vm.LanguageIndex = 1;
+            if (!first.Selected || vm.FilesView.Cast<object>().Count() != 1) throw new InvalidOperationException("UI interaction failed during background work");
+            vm.CancelCommand.Execute(null); await background.WaitAsync(TimeSpan.FromSeconds(2));
+            if (vm.Busy) throw new InvalidOperationException("Stop did not release the UI");
+            vm.Filter = ""; checks["LanguageFilterAndStopDuringBackgroundWork"] = true;
             checks["LanguageSelectionPreserved"] = true;
             checks["LanguageLabelHasRoom"] = window.LanguageLabel.ActualWidth >= 76;
             if (window.LanguageLabel.ActualWidth < 76) throw new InvalidOperationException("Language label clipped");
@@ -94,7 +115,8 @@ internal static class UiSmoke
     internal static void Save(Window window, string path, double scale = 1)
     {
         window.UpdateLayout();
-        var visual = (FrameworkElement)window.Content;
+        // Render the window coordinate space: rendering only the content's ActualWidth cuts off its margins.
+        var visual = (FrameworkElement)window;
         var bitmap = new RenderTargetBitmap((int)(visual.ActualWidth * scale), (int)(visual.ActualHeight * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
         var drawing = new DrawingVisual();
         using (var context = drawing.RenderOpen())
