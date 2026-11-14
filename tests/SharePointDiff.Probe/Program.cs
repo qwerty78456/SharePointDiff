@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using SharePointDiff.Core;
 
-if (args.Length < 3) throw new ArgumentException("Use --crash <fixture mirror> <stage>, --live <fixture mirror> <settings> <site> <tiny-file-json>, or --normalize <fixture mirror> <inventory-json>.");
+if (args.Length < 3) throw new ArgumentException("Use --crash <fixture mirror> <stage>, --live/--live-inventory <fixture mirror> <settings> <site> <tiny-file-json>, or --normalize <fixture mirror> <inventory-json>.");
 string root = Path.GetFullPath(args[1]);
 var parent = new DirectoryInfo(root).Parent;
 if (Path.GetFileName(root) != "mirror" || parent == null || !Guid.TryParseExact(parent.Name, "N", out _))
@@ -45,7 +45,7 @@ if (args[0] == "--normalize")
     });
     return;
 }
-if (args[0] != "--live" || args.Length < 5) throw new ArgumentException("Unknown probe mode");
+if (args[0] is not ("--live" or "--live-inventory") || args.Length < 5) throw new ArgumentException("Unknown probe mode");
 var configuration = JsonFiles.Read<UserSettings>(args[2])?.Normalize() ?? throw new InvalidOperationException("Missing test configuration");
 string liveSite = DiffService.NormalizeSite(args[3]);
 var profile = configuration.Profiles[configuration.SelectedProfile];
@@ -53,9 +53,72 @@ var authentication = new BrowserAuthentication(profile, true); // deliberately n
 Console.WriteLine("SIGN_IN_REQUIRED");
 await authentication.SignInAsync(["https://graph.microsoft.com", new Uri(liveSite).GetLeftPart(UriPartial.Authority)], default);
 Console.WriteLine("SIGNED_IN");
-using var reader = new SharePointReader(authentication.Interactive);
+using var audit = new InventoryAudit(HttpTransport.Handler(true));
+HttpClient ContentClient() => args[0] == "--live-inventory" ? new(new ForbiddenInventoryContent()) : HttpTransport.Client(false);
+using var reader = new SharePointReader(authentication.Interactive, new HttpClient(audit), ContentClient(), ContentClient());
 var service = new DiffService(reader);
 var libraries = await service.ConnectAsync(liveSite, root, default);
+if (args[0] == "--live-inventory")
+{
+    var examined = new List<object>();
+    foreach (var candidate in libraries.Where(l => l.ItemCount > 0).OrderBy(l => l.ItemCount))
+    {
+        audit.Clear();
+        Console.WriteLine("READING_FILE_LIBRARY_" + candidate.ItemCount);
+        var cold = await service.ScanAsync(liveSite, root, [candidate], null, default, report: false, options: new(ReadAllRemote: true));
+        int files = cold.Entries.Count(e => e.Remote != null);
+        examined.Add(new { candidate.ItemCount, Files = files, cold.Issues });
+        if (cold.Issues.Count != 0) throw new InvalidOperationException("Live inventory incomplete: " + JsonSerializer.Serialize(cold.Issues));
+        if (files == 0) continue;
+        var coldRequests = audit.Snapshot();
+        audit.Clear();
+        Console.WriteLine("READING_FILE_DELTA");
+        var warm = await service.ScanAsync(liveSite, root, [candidate], null, default, report: false);
+        var warmRequests = audit.Snapshot();
+        audit.Clear();
+        Console.WriteLine("READING_FILE_FULL_REFERENCE");
+        var full = await service.ScanAsync(liveSite, root, [candidate], null, default, report: false, options: new(ReadAllRemote: true));
+        var fullRequests = audit.Snapshot();
+        static void EqualInventory(ScanResult a, ScanResult b)
+        {
+            var left = a.Entries.Where(e => e.Remote != null).OrderBy(e => e.RelativePath, StringComparer.Ordinal).Select(e => e.Remote!).ToArray();
+            var right = b.Entries.Where(e => e.Remote != null).OrderBy(e => e.RelativePath, StringComparer.Ordinal).Select(e => e.Remote!).ToArray();
+            if (a.Issues.Count != 0 || b.Issues.Count != 0 || left.Length != right.Length ||
+                !a.RemoteFolders.Order().SequenceEqual(b.RemoteFolders.Order()) || left.Zip(right).Any(p =>
+                p.First.RelativePath != p.Second.RelativePath || p.First.Size != p.Second.Size || p.First.QuickXorHash != p.Second.QuickXorHash ||
+                p.First.ETag != p.Second.ETag || !JsonElement.DeepEquals(p.First.Basic, p.Second.Basic) ||
+                !JsonElement.DeepEquals(p.First.Metadata.Fields, p.Second.Metadata.Fields) ||
+                !JsonElement.DeepEquals(p.First.Metadata.DisplayValues, p.Second.Metadata.DisplayValues) ||
+                !JsonElement.DeepEquals(p.First.Metadata.Columns, p.Second.Metadata.Columns)))
+                throw new InvalidOperationException("Live delta and full inventory differ; retain evidence and inspect a concurrent source change.");
+        }
+        EqualInventory(cold, warm); EqualInventory(warm, full);
+        if (warm.RemoteReads?.Single().Incremental != true || warmRequests.GetValueOrDefault("REST.Items") != 0 ||
+            warm.Statistics?.Counters.GetValueOrDefault("Content.ReadBytes") != 0)
+            throw new InvalidOperationException("Warm live scan did not use the expected shortcuts.");
+        await JsonFiles.WriteAsync(Path.Combine(parent.FullName, "live-inventory-results.json"), new
+        {
+            LibrariesListed = libraries.Count,
+            Examined = examined,
+            Files = files,
+            candidate.ItemCount,
+            ColdIo = cold.Statistics,
+            WarmIo = warm.Statistics,
+            FullIo = full.Statistics,
+            ColdRequests = coldRequests,
+            WarmRequests = warmRequests,
+            FullRequests = fullRequests,
+            WarmRead = warm.RemoteReads,
+            TypedInventoryEquivalent = true,
+            PayloadDownloaded = 0,
+            AuthCacheFile = authentication.CacheFilePath,
+            Note = "Read-only initial/delta/full inventory of the smallest library containing files; no content request or SharePoint write."
+        });
+        Console.WriteLine("LIVE_INVENTORY_PASSED");
+        return;
+    }
+    throw new InvalidOperationException("No document library containing files was available.");
+}
 var selected = libraries.Where(l => l.ItemCount > 0).OrderBy(l => l.ItemCount).Take(1).ToArray();
 if (selected.Length == 0) selected = libraries.Take(1).ToArray();
 Console.WriteLine("READING_SMALLEST_LIBRARY");
@@ -133,4 +196,28 @@ internal sealed class ProbeRemote : IRemoteReader
         byte[] bytes = [4, 5, 6]; await System.IO.File.WriteAllBytesAsync(path, bytes, ct);
         return new(3, Hashes: new(3, File.QuickXorHash!, Convert.ToHexString(SHA256.HashData(bytes))));
     }
+}
+
+internal sealed class InventoryAudit(HttpMessageHandler inner) : DelegatingHandler(inner)
+{
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> counts = new();
+    public void Clear() => counts.Clear();
+    public Dictionary<string, int> Snapshot() => new(counts);
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        if (request.Method != HttpMethod.Get) throw new InvalidOperationException("The live probe permits GET only.");
+        string path = request.RequestUri!.AbsolutePath;
+        if (path.EndsWith("/content", StringComparison.Ordinal)) throw new InvalidOperationException("Inventory must not download content.");
+        string kind = path.Contains("/_api/", StringComparison.Ordinal) ? path.EndsWith("/items", StringComparison.Ordinal) ? "REST.Items" :
+            path.EndsWith("/fields", StringComparison.Ordinal) ? "REST.Fields" : "REST.Count" :
+            path.Contains("/lists/", StringComparison.Ordinal) ? "Graph.ListDelta" : path.Contains("/drives/", StringComparison.Ordinal) ? "Graph.DriveDelta" : "Graph.Other";
+        counts.AddOrUpdate(kind, 1, (_, n) => n + 1);
+        return base.SendAsync(request, ct);
+    }
+}
+
+internal sealed class ForbiddenInventoryContent : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+        throw new InvalidOperationException("The inventory acceptance probe must not request file content.");
 }

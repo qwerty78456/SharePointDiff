@@ -26,7 +26,7 @@ Mã nguồn mới được kiểm tra trên Windows x64, .NET SDK 10.0.302. Kế
 | WPF | Bốn lượt main/tray/fatal-main/fatal-tray đạt; 10.000 hàng có ảo hoá; đổi Việt–Anh và giữ lựa chọn; lọc/đổi ngôn ngữ/dừng được khi chạy công việc nền giả lập |
 | Hình ảnh giao diện | Đã xem ảnh hai ngôn ngữ, cửa sổ nhỏ và ảnh kết xuất ở tỷ lệ 100–200%. Chưa nghiệm thu chuyển qua lại nhiều màn hình có DPI vật lý khác nhau |
 | Cấu hình và dữ liệu thật | Bộ smoke không tạo settings/token cache và không thay mục khởi động hay thư mục dữ liệu thật |
-| Site thật với 1.2.0 | **Chưa hoàn tất**: phiên đăng nhập thử mới hết thời gian chờ trước khi nhận token; chưa có lượt kiểm kê/tải mới để tính là nghiệm thu thực tế |
+| Site thật với 1.2.0 | **Đã thử thành công**: đối chiếu đầy đủ/delta trên thư viện nhỏ có tài liệu; tải tệp 40 byte, thay có sao lưu, dùng lại cache/local. Chi tiết và giới hạn bên dưới |
 
 ### Đo chuẩn hoá dữ liệu lưu sẵn
 
@@ -34,14 +34,33 @@ Dùng một bản lưu kiểm kê riêng **2.472 tệp** đã có, không tải 
 
 Đây không phải phép đo giảm 84,7% data internet hoặc độ hao SSD. Bộ đếm ghi lượng đọc/ghi do ứng dụng yêu cầu; Windows có bộ đệm. Nén JSON không giảm tương ứng dung lượng tài liệu. Lượt Compare thủ công vẫn xuất báo cáo đầy đủ JSON/CSV; kiểm tra nền bỏ bộ báo cáo đó. Hash đã lưu và delta có thể dùng kết quả quan sát trước; trước ghi đè vẫn kiểm tra dữ liệu thật. Không dùng hard link hoặc bỏ đọc kiểm tra bản sao lưu, tệp tạm, tệp đã cài.
 
+### Thử site thật với lõi xử lý 1.2.0
+
+Ngày 13/11/2026, đã đăng nhập Microsoft bằng trình duyệt và thử trên site người dùng chỉ định. Dùng lõi xử lý tại commit `9f9dcda` của bản ZIP RC1 qua chương trình kiểm thử riêng; executable WPF trong ZIP được thử giao diện cách ly, không dùng nó để tự động thao tác đăng nhập. Tất cả cập nhật local nằm trong thư mục thử có tên ngẫu nhiên dưới `tmp/`. Không ghi dữ liệu lên SharePoint.
+
+| Phép thử thực tế | Kết quả |
+|---|---|
+| Kết nối | Liệt kê được 6 thư viện |
+| Chọn thư viện để kiểm tra delta | Thư viện nhỏ nhất có 2 thư mục và 0 tệp; không lấy lượt đó làm bằng chứng delta tài liệu. Đã thử tiếp thư viện nhỏ nhất có tài liệu: **1 tệp, 3 thư mục** |
+| Đọc đầy đủ → delta → đọc đầy đủ đối chứng | Cả ba lượt không có issue; khớp đường dẫn, thư mục, dung lượng, hash, eTag, JSON Graph, giá trị metadata gốc/hiển thị và sơ đồ cột, giữ nguyên kiểu JSON |
+| Delta khi không đổi | **4 yêu cầu API**: 1 drive delta, 1 list delta, 1 sơ đồ cột, 1 đếm mục; **0 `/items`**, không ghi lại snapshot lớn. Lượt đọc đầy đủ đối chứng dùng 7 yêu cầu. Không tính đăng nhập và bước kết nối chung |
+| Hash local khi không đổi | Dùng hash đã lưu cho 2 tệp thử trên máy; **0 byte nội dung được đọc** trong lượt delta |
+| Tải tệp được chọn | Một tệp thử **40 byte**, trạng thái `Verified`, dung lượng và QuickXorHash đúng; tệp cài được đọc lại để kiểm tra SHA-256 |
+| Ghi đè bản local đã sửa cùng dung lượng | Sao lưu đúng toàn bộ bản local đã sửa; bản cài xác minh thành công, dùng cache nên tải thêm **0 byte** |
+| Dùng lại local khác đường dẫn | Tách cache của tệp thử ra ngoài để buộc dùng bản local; chép về đúng chỗ, giữ nguồn và tệp local-only; tải thêm **0 byte** |
+| Lượng tải nội dung | Tổng **40 byte** cho lượt tải, ghi đè và dùng lại. Lượt đọc đầy đủ/delta đối chứng không tải nội dung. Con số này không bao gồm đăng nhập, JSON hay HTTP |
+| Đăng nhập | Hồ sơ có `AllSites.FullControl`; dùng phiên trong bộ nhớ theo lựa chọn của người dùng, không có đường dẫn cache đăng nhập và không lưu token |
+
+Lượt delta đọc 34.621 byte JSON **sau giải nén**; đây không phải số byte internet. Bản gói cuối giữ nguyên mã ứng dụng/lõi đã thử, chỉ cập nhật chương trình kiểm thử và báo cáo. Các tình huống làm thay đổi dữ liệu SharePoint vẫn thử bằng giả lập, không tạo thay đổi trên site thật.
+
 ### Chưa kiểm chứng
 
-- Không có nghiệm thu site thật mới cho delta và luồng cập nhật 1.2.0; kết quả thật của v1.1.0 bên dưới là lịch sử, không thay thế được.
+- Delta trên site thật mới kiểm tra thư viện nhỏ đang không đổi. Thêm/sửa/xoá/đổi cha/metadata-only và token hết hạn được kiểm thử giả lập; không chủ động sửa dữ liệu SharePoint để tạo các ca đó.
 - Chưa thử cắt điện thật, lỗi bộ điều khiển SSD, hoặc rút mạng vật lý. Cưỡng bức kết thúc tiến trình không chứng minh mọi tình huống mất điện.
 - Chưa thử lại đăng xuất/đăng nhập Windows hoặc lưu đăng nhập bằng app Entra chỉ đọc trên tenant thật.
 - Chưa thử ổ FAT/SMB thật hoặc DPI vật lý nhiều màn hình; khi không đủ thông tin nhận dạng, mã đi theo nhánh tính lại hash.
 
-**English:** 1.2.0 passes 179 automated tests and the four isolated WPF/tray/fatal smoke runs. Six actual forced-process termination boundaries preserve originals and recover only durable commits. A private 2,472-file saved inventory shrank from 161,088,906 bytes to 24,619,952 bytes including shared schemas, with typed field-by-field roundtrip validation. A replacement fixture measures 10 payload lengths of logical Scan+Apply I/O versus approximately 15 from the prior code-path count. This is not a physical SSD or internet-bandwidth measurement. **New live SharePoint acceptance is still pending:** the browser sign-in timed out before obtaining a token. Physical power loss, physical network loss, real FAT/SMB and multi-monitor DPI transitions were not tested. Historical v1.1.0 live results below must not be presented as 1.2.0 results.
+**English:** 1.2.0 passes 179 automated tests and the four isolated WPF/tray/fatal smoke runs. Six actual forced-process termination boundaries preserve originals and recover only durable commits. A private saved 2,472-file inventory shrank from 161,088,906 bytes to 24,619,952 bytes including schemas, with typed roundtrip validation. The replacement fixture measures 10 payload lengths of logical Scan+Apply I/O versus approximately 15 from the prior code-path count. These are not physical SSD or internet-bandwidth measurements. **New live tests passed** using the RC1 core at `9f9dcda` through an isolated test program: full/delta/full inventories match on a library with one file and three folders; the unchanged pass makes four API requests and no `/items` request, reuses two local hashes without content reads, and downloads no documents. The transfer tests download 40 bytes total, verify a replacement backup, reuse cache/local bytes and preserve the local-only file. Sign-in stays in memory with the user's FullControl app. WPF acceptance uses the packaged executable in isolated demo mode. Remote mutations, physical power/network loss, actual Windows sign-in, real FAT/SMB and physical multi-monitor DPI transitions remain unverified on the live environment; simulated cases are separate from these observations.
 
 ## Thử trên site thật ngày 12–13/11/2026
 

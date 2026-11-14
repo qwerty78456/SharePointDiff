@@ -406,5 +406,6 @@ Nguồn kỹ thuật:
 - [Microsoft QuickXorHash algorithm](https://learn.microsoft.com/en-us/onedrive/developer/code-snippets/quickxorhash?view=odsp-graph-online)
 - [Graph hashes và giới hạn hash được cung cấp](https://learn.microsoft.com/en-us/graph/api/resources/hashes?view=graph-rest-1.0)
 - [Graph delta và phân trang](https://learn.microsoft.com/en-us/graph/api/driveitem-delta?view=graph-rest-1.0)
+- [Graph delta của mục thư viện](https://learn.microsoft.com/en-us/graph/api/listitem-delta?view=graph-rest-1.0)
 - [Graph content download và Range](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content?view=graph-rest-1.0)
 - [Graph throttling](https://learn.microsoft.com/en-us/graph/throttling)
